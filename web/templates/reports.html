@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Reports{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>📊 Attendance Reports</h1>
+        <p class="text-muted">View and download attendance reports</p>
+    </div>
+
+    <div class="report-controls">
+        <div class="card">
+            <div class="card-header">
+                <h3>Generate Report</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label for="reportDate">Select Date</label>
+                    <input type="date" id="reportDate" class="form-control" value="{{ today }}">
+                </div>
+                <div class="form-group">
+                    <label for="reportType">Report Type</label>
+                    <select id="reportType" class="form-control">
+                        <option value="daily">Daily Report (TXT)</option>
+                        <option value="csv">CSV Export</option>
+                    </select>
+                </div>
+                <button id="generateReportBtn" class="btn btn-primary">Generate Report</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Attendance Records -->
+    <div class="card">
+        <div class="card-header">
+            <h3>All Attendance Records</h3>
+            <input type="text" id="searchBox" class="search-input" placeholder="Search by name or ID...">
+        </div>
+        <div class="card-body">
+            {% if records %}
+            <div class="table-responsive">
+                <table class="table" id="attendanceTable">
+                    <thead>
+                        <tr>
+                            <th>Student ID</th>
+                            <th>Name</th>
+                            <th>Entry Time</th>
+                            <th>Exit Time</th>
+                            <th>Duration (min)</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in records %}
+                        <tr>
+                            <td>{{ record[0] }}</td>
+                            <td>{{ record[1] }}</td>
+                            <td>{{ record[2] }}</td>
+                            <td>{{ record[3] }}</td>
+                            <td>{{ record[4] }}</td>
+                            <td>
+                                <span class="badge badge-{{ 'success' if record[5] == 'PRESENT' else 'danger' }}">
+                                    {{ record[5] }}
+                                </span>
+                            </td>
+                            <td>{{ record[6] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No attendance records found</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Student List -->
+    <div class="card">
+        <div class="card-header">
+            <h3>Registered Students</h3>
+        </div>
+        <div class="card-body">
+            {% if students %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Student ID</th>
+                            <th>Name</th>
+                            <th>Roll Number</th>
+                            <th>Registered Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for student in students %}
+                        <tr>
+                            <td>{{ student[0] }}</td>
+                            <td>{{ student[1] }}</td>
+                            <td>{{ student[2] }}</td>
+                            <td>{{ student[3] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No students registered</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/reports.js') }}"></script>
+{% endblock %}

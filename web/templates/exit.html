@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Exit Camera{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>🚪 Exit Camera System</h1>
+        <p class="text-muted">Mark student exit time and calculate attendance</p>
+    </div>
+
+    <div class="camera-page-container">
+        <div class="card camera-card">
+            <div class="card-header">
+                <h3>Live Camera Feed</h3>
+                <span class="status-indicator" id="statusIndicator">
+                    <span class="status-dot"></span> Ready
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="camera-viewport">
+                    <video id="video" autoplay></video>
+                    <canvas id="canvas" style="display:none;"></canvas>
+                    <div class="camera-overlay" id="overlay">
+                        <div class="scan-line"></div>
+                    </div>
+                </div>
+
+                <div class="camera-controls">
+                    <button id="startBtn" class="btn btn-primary">Start Camera</button>
+                    <button id="stopBtn" class="btn btn-danger" disabled>Stop Camera</button>
+                    <button id="recognizeBtn" class="btn btn-success" disabled>Recognize Face</button>
+                </div>
+
+                <div id="resultBox" class="result-box" style="display:none;">
+                    <h4>Exit Marked</h4>
+                    <div id="resultContent"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-sidebar">
+            <div class="card">
+                <div class="card-header">
+                    <h4>ℹ️ Instructions</h4>
+                </div>
+                <div class="card-body">
+                    <ol>
+                        <li>Click "Start Camera"</li>
+                        <li>Stand in front of the camera</li>
+                        <li>Click "Recognize Face"</li>
+                        <li>Exit time and attendance will be marked</li>
+                    </ol>
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> Minimum {{ min_duration }} minutes required for PRESENT status
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h4>📋 Recent Exits</h4>
+                </div>
+                <div class="card-body">
+                    <div id="recentExits">
+                        <p class="text-muted">No exits yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const MIN_DURATION = {{ config.MINIMUM_DURATION if config else 90 }};
+</script>
+<script src="{{ url_for('static', filename='js/exit.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,21 @@
+# Smart Attendance Management System - Requirements
+# Install all dependencies using: pip install -r requirements.txt
+
+# Core dependencies
+opencv-python>=4.8.0
+face-recognition>=1.3.0
+numpy>=1.24.0
+pillow>=10.0.0
+
+# Web framework
+Flask>=3.0.0
+
+# Face recognition backend (use dlib-bin for Windows without CMake)
+# For Windows: pip install dlib-bin
+# For Linux/Mac: pip install dlib
+
+# Additional dependencies
+setuptools>=80.0.0
+
+# Database
+# SQLite is included with Python, no external dependency needed

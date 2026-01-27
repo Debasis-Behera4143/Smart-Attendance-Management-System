@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Smart Attendance{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>📊 Dashboard</h1>
+        <p class="text-muted">Today's Attendance Overview - {{ stats.date }}</p>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="stats-grid">
+        <div class="stat-card stat-total">
+            <div class="stat-icon">👥</div>
+            <div class="stat-info">
+                <h3>{{ stats.total }}</h3>
+                <p>Total Students</p>
+            </div>
+        </div>
+
+        <div class="stat-card stat-present">
+            <div class="stat-icon">✅</div>
+            <div class="stat-info">
+                <h3>{{ stats.present }}</h3>
+                <p>Present</p>
+            </div>
+        </div>
+
+        <div class="stat-card stat-absent">
+            <div class="stat-icon">❌</div>
+            <div class="stat-info">
+                <h3>{{ stats.absent }}</h3>
+                <p>Absent</p>
+            </div>
+        </div>
+
+        <div class="stat-card stat-rate">
+            <div class="stat-icon">📈</div>
+            <div class="stat-info">
+                <h3>{{ stats.attendance_rate }}%</h3>
+                <p>Attendance Rate</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Today's Attendance Table -->
+    <div class="card">
+        <div class="card-header">
+            <h3>Today's Attendance Records</h3>
+        </div>
+        <div class="card-body">
+            {% if records %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Student ID</th>
+                            <th>Name</th>
+                            <th>Entry Time</th>
+                            <th>Exit Time</th>
+                            <th>Duration (min)</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in records %}
+                        <tr>
+                            <td>{{ record[0] }}</td>
+                            <td>{{ record[1] }}</td>
+                            <td>{{ record[2].split()[1] if ' ' in record[2] else record[2] }}</td>
+                            <td>{{ record[3].split()[1] if ' ' in record[3] else record[3] }}</td>
+                            <td>{{ record[4] }}</td>
+                            <td>
+                                <span class="badge badge-{{ 'success' if record[5] == 'PRESENT' else 'danger' }}">
+                                    {{ record[5] }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No attendance records for today</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

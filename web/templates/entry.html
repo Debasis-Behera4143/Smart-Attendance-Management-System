@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Entry Camera{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>🚪 Entry Camera System</h1>
+        <p class="text-muted">Mark student entry time</p>
+    </div>
+
+    <div class="camera-page-container">
+        <div class="card camera-card">
+            <div class="card-header">
+                <h3>Live Camera Feed</h3>
+                <span class="status-indicator" id="statusIndicator">
+                    <span class="status-dot"></span> Ready
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="camera-viewport">
+                    <video id="video" autoplay></video>
+                    <canvas id="canvas" style="display:none;"></canvas>
+                    <div class="camera-overlay" id="overlay">
+                        <div class="scan-line"></div>
+                    </div>
+                </div>
+
+                <div class="camera-controls">
+                    <button id="startBtn" class="btn btn-primary">Start Camera</button>
+                    <button id="stopBtn" class="btn btn-danger" disabled>Stop Camera</button>
+                    <button id="recognizeBtn" class="btn btn-success" disabled>Recognize Face</button>
+                </div>
+
+                <div id="resultBox" class="result-box" style="display:none;">
+                    <h4>Recognition Result</h4>
+                    <div id="resultContent"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-sidebar">
+            <div class="card">
+                <div class="card-header">
+                    <h4>ℹ️ Instructions</h4>
+                </div>
+                <div class="card-body">
+                    <ol>
+                        <li>Click "Start Camera"</li>
+                        <li>Stand in front of the camera</li>
+                        <li>Click "Recognize Face"</li>
+                        <li>Entry time will be marked automatically</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h4>📋 Recent Entries</h4>
+                </div>
+                <div class="card-body">
+                    <div id="recentEntries">
+                        <p class="text-muted">No entries yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/entry.js') }}"></script>
+{% endblock %}

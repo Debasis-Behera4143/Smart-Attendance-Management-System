@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Register Student{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>👤 Register New Student</h1>
+        <p class="text-muted">Capture face data and register student</p>
+    </div>
+
+    <div class="register-container">
+        <div class="card">
+            <div class="card-header">
+                <h3>Student Information</h3>
+            </div>
+            <div class="card-body">
+                <form id="registerForm">
+                    <div class="form-group">
+                        <label for="name">Student Name</label>
+                        <input type="text" id="name" name="name" class="form-control" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="rollNumber">Roll Number</label>
+                        <input type="text" id="rollNumber" name="rollNumber" class="form-control" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Face Capture</label>
+                        <div class="camera-container">
+                            <video id="video" autoplay></video>
+                            <canvas id="canvas" style="display:none;"></canvas>
+                        </div>
+                        <div class="camera-controls">
+                            <button type="button" id="startCamera" class="btn btn-primary">Start Camera</button>
+                            <button type="button" id="captureBtn" class="btn btn-success" disabled>
+                                Capture Images (0/20)
+                            </button>
+                            <button type="button" id="stopCamera" class="btn btn-danger" disabled>Stop Camera</button>
+                        </div>
+                    </div>
+
+                    <div class="captured-images" id="capturedImages"></div>
+
+                    <div class="form-actions">
+                        <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
+                            Register Student
+                        </button>
+                        <button type="reset" class="btn btn-secondary">Reset</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <h4>📸 Instructions</h4>
+            <ul>
+                <li>Enter student name and roll number</li>
+                <li>Click "Start Camera" to activate webcam</li>
+                <li>Click "Capture Images" to take 20 photos</li>
+                <li>Move your head slightly between captures</li>
+                <li>Try different expressions</li>
+                <li>Ensure good lighting</li>
+                <li>Click "Register Student" when done</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/register.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,44 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project specific - Generated data (NEW STRUCTURE)
+data/dataset/*/
+data/encodings/*.pkl
+data/database/*.db
+data/logs/*.txt
+data/reports/*.csv
+data/reports/*.txt
+
+# Keep directory structure but ignore contents
+!data/dataset/.gitkeep
+!data/encodings/.gitkeep
+!data/database/.gitkeep
+!data/logs/.gitkeep
+!data/reports/.gitkeep
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*.log
