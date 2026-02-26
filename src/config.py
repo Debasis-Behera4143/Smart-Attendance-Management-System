@@ -49,7 +49,7 @@ YOLO_MODEL_PATH = os.path.join(MODELS_DIR, "yolov8n-face.pt")
 # Runtime / web settings
 APP_ENV = os.getenv("SMART_ATTENDANCE_ENV", "development")
 FLASK_HOST = os.getenv("SMART_ATTENDANCE_HOST", "0.0.0.0")
-FLASK_PORT = _env_int("SMART_ATTENDANCE_PORT", 5000)
+FLASK_PORT = _env_int("SMART_ATTENDANCE_PORT", _env_int("PORT", 5000))
 FLASK_DEBUG = _env_bool("SMART_ATTENDANCE_DEBUG", False)
 SECRET_KEY = os.getenv("SMART_ATTENDANCE_SECRET_KEY", "change-me-in-production")
 
