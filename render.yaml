@@ -1,12 +1,9 @@
 services:
   - type: web
     name: smart-attendance-system
-    env: docker
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    healthCheckPath: /api/health
+    env: python
+    buildCommand: "pip install -r requirements-deploy.txt"
+    startCommand: "gunicorn --bind 0.0.0.0:$PORT --workers 2 web.app:app"
     envVars:
-      - key: SMART_ATTENDANCE_ENV
-        value: production
-      - key: SMART_ATTENDANCE_HOST
-        value: 0.0.0.0
+      - key: PYTHON_VERSION
+        value: 3.11.9
