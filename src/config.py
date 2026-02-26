@@ -119,7 +119,7 @@ COLOR_WHITE = (255, 255, 255)
 
 # Student ID format
 STUDENT_ID_PREFIX = "student_"
-STUDENT_ID_LENGTH = 3
+STUDENT_ID_LENGTH = 10
 
 # Subject settings
 SUBJECT_OPTIONS = [

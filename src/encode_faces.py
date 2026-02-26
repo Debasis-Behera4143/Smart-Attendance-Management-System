@@ -90,7 +90,8 @@ class FaceEncoder:
                 # Detect face locations
                 face_locations = face_recognition.face_locations(
                     image, 
-                    model=config.FACE_DETECTION_MODEL
+                    model=config.FACE_DETECTION_MODEL,
+                    number_of_times_to_upsample=1 if config.FACE_DETECTION_MODEL == "hog" else 2
                 )
                 
                 # Generate encodings
@@ -101,8 +102,15 @@ class FaceEncoder:
                 )
                 
                 if len(encodings) > 0:
-                    # Store encoding and corresponding name
-                    self.known_encodings.append(encodings[0])
+                    # If multiple faces detected, use the largest one (likely the main subject)
+                    if len(encodings) > 1:
+                        # Find largest face by area
+                        areas = [(bottom - top) * (right - left) for top, right, bottom, left in face_locations]
+                        largest_idx = areas.index(max(areas))
+                        self.known_encodings.append(encodings[largest_idx])
+                        print(f"  ! Multiple faces ({len(encodings)}) in {os.path.basename(img_path)} - using largest")
+                    else:
+                        self.known_encodings.append(encodings[0])
                     self.known_names.append(student_id)
                     processed += 1
                 else:

@@ -125,12 +125,35 @@ class RecognitionService:
 
         rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
         face_locations = self._detect_faces(rgb_frame)
+        match = self._match_from_locations(rgb_frame, face_locations, scale)
+        if match:
+            return match
+
+        # If YOLO is active but failed to produce a stable recognition, retry with
+        # the native face_recognition detector as a safety fallback.
+        if self._yolo_active:
+            fallback_locations = face_recognition.face_locations(
+                rgb_frame, model=config.FACE_DETECTION_MODEL
+            )
+            match = self._match_from_locations(rgb_frame, fallback_locations, scale)
+            if match:
+                return match
+
+        return None
+
+    def _match_from_locations(
+        self, rgb_frame: np.ndarray, face_locations: List[FaceLocation], scale: float
+    ) -> Optional[Dict]:
         if not face_locations:
             return None
 
-        face_encodings = face_recognition.face_encodings(
-            rgb_frame, face_locations, model=config.FACE_ENCODING_MODEL
-        )
+        try:
+            face_encodings = face_recognition.face_encodings(
+                rgb_frame, face_locations, model=config.FACE_ENCODING_MODEL
+            )
+        except Exception:
+            return None
+
         if not face_encodings:
             return None
 

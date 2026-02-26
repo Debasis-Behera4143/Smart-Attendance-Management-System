@@ -60,8 +60,8 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        const width = 360;
-        const height = 270;
+        const width = 640;
+        const height = 480;
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext("2d");
@@ -199,7 +199,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        const studentId = `student_${rollNumber.padStart(3, "0")}_${name.replace(/\s+/g, "_")}`;
+        const studentId = `student_${rollNumber}_${name.replace(/\s+/g, "_")}`;
 
         submitBtn.disabled = true;
         submitBtn.textContent = "Registering...";

@@ -14,7 +14,7 @@ class ValidationError(ValueError):
 
 
 _STUDENT_ID_RE = re.compile(
-    rf"^{re.escape(config.STUDENT_ID_PREFIX)}\d{{{config.STUDENT_ID_LENGTH}}}_[A-Za-z0-9_-]+$"
+    rf"^{re.escape(config.STUDENT_ID_PREFIX)}[A-Za-z0-9]+_[A-Za-z0-9_-]+$"
 )
 _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 ._-]*$")
 _ROLL_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -37,7 +37,7 @@ def validate_student_id(student_id: str) -> str:
         raise ValidationError("student_id contains invalid path characters")
     if not _STUDENT_ID_RE.match(value):
         raise ValidationError(
-            f"student_id must follow format {config.STUDENT_ID_PREFIX}NNN_Name"
+            f"student_id must follow format {config.STUDENT_ID_PREFIX}RollNumber_Name"
         )
     return value
 

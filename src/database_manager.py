@@ -12,6 +12,29 @@ from . import config
 logger = logging.getLogger(__name__)
 
 
+class _SQLiteConnectionContext:
+    """Context manager that commits/rolls back and always closes the connection."""
+
+    def __init__(self, connection: sqlite3.Connection):
+        self._connection = connection
+
+    def __enter__(self) -> sqlite3.Connection:
+        return self._connection
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        try:
+            if exc_type is None:
+                self._connection.commit()
+            else:
+                self._connection.rollback()
+        finally:
+            self._connection.close()
+        return False
+
+    def __getattr__(self, item):
+        return getattr(self._connection, item)
+
+
 class DatabaseManager:
     """Centralized database operations for the attendance system."""
 
@@ -28,7 +51,7 @@ class DatabaseManager:
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
-        return conn
+        return _SQLiteConnectionContext(conn)
 
     def create_tables(self):
         with self.get_connection() as conn:
