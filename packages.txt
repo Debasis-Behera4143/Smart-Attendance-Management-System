@@ -1,4 +1,1 @@
-cmake
-build-essential
-libopencv-dev
-python3-opencv
+# No system packages needed - using prebuilt Python wheels
