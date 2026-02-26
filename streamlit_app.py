@@ -4,6 +4,7 @@ import os
 import sys
 import streamlit as st
 import cv2
+import numpy as np
 import pandas as pd
 from datetime import datetime, date
 from PIL import Image
@@ -212,7 +213,6 @@ elif page == "📤 Exit":
         with col2:
             with st.spinner("🔍 Recognizing face..."):
                 # Convert PIL to cv2 format
-                import numpy as np
                 img_array = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
                 
                 # Recognize face

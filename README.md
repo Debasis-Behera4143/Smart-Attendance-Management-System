@@ -400,7 +400,56 @@ FACE_RECOGNITION_TOLERANCE = 0.7  # Increase for easier matching
 
 ---
 
-## 👥 Contributors
+## � Deployment Options
+
+### **Option 1: Streamlit Cloud (Recommended - FREE & Easy)**
+
+Perfect for quick deployment with built-in camera support!
+
+```bash
+# Deploy to Streamlit Cloud
+1. Go to share.streamlit.io
+2. Connect your GitHub repository
+3. Set main file: streamlit_app.py
+4. Click Deploy!
+```
+
+📖 **Full Guide**: See [STREAMLIT_DEPLOYMENT.md](STREAMLIT_DEPLOYMENT.md)
+
+**Files needed**: `streamlit_app.py`, `requirements-streamlit.txt`, `packages.txt`
+
+---
+
+### **Option 2: Local Server (Flask)**
+
+For local network deployment (institutions/offices):
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run Flask app (development)
+python web/app.py
+
+# Run Flask app (production with Waitress)
+python web/wsgi.py
+```
+
+**Access**: `http://localhost:8080` or `http://YOUR_IP:8080`
+
+---
+
+### **Option 3: Cloud Platforms (Flask)**
+
+Deploy Flask app on Render, Railway, or similar platforms:
+
+**Files needed**: `Procfile`, `runtime.txt`, `requirements.txt`
+
+📖 **Full Guide**: See [DEPLOYMENT.md](DEPLOYMENT.md) (if exists)
+
+---
+
+## �👥 Contributors
 
 - **Your Name** - Final Year Project
 
