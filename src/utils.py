@@ -23,7 +23,12 @@ class ReportGenerator:
         # Ensure reports directory exists
         os.makedirs(self.reports_path, exist_ok=True)
     
-    def generate_csv_report(self, date: str = None, filename: str = None) -> str:
+    def generate_csv_report(
+        self,
+        date: str = None,
+        filename: str = None,
+        subject: str = None,
+    ) -> str:
         """
         Generate CSV report for attendance
         
@@ -36,14 +41,16 @@ class ReportGenerator:
         """
         # Get attendance records
         if date:
-            records = self.db.get_attendance_by_date(date)
+            records = self.db.get_attendance_by_date(date, subject=subject)
             if not filename:
-                filename = f"attendance_report_{date}.csv"
+                suffix = f"_{subject.replace(' ', '_')}" if subject else ""
+                filename = f"attendance_report_{date}{suffix}.csv"
         else:
-            records = self.db.get_all_attendance()
+            records = self.db.get_all_attendance(subject=subject)
             if not filename:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"attendance_report_all_{timestamp}.csv"
+                suffix = f"_{subject.replace(' ', '_')}" if subject else ""
+                filename = f"attendance_report_all{suffix}_{timestamp}.csv"
         
         # Create report file path
         report_path = os.path.join(self.reports_path, filename)
@@ -55,7 +62,7 @@ class ReportGenerator:
             # Write header
             writer.writerow([
                 'Student ID', 'Name', 'Entry Time', 'Exit Time', 
-                'Duration (min)', 'Status', 'Date'
+                'Duration (min)', 'Status', 'Date', 'Subject'
             ])
             
             # Write records
@@ -64,7 +71,7 @@ class ReportGenerator:
         
         return report_path
     
-    def generate_daily_report(self, date: str = None) -> str:
+    def generate_daily_report(self, date: str = None, subject: str = None) -> str:
         """
         Generate detailed daily attendance report
         
@@ -77,10 +84,11 @@ class ReportGenerator:
         if not date:
             date = datetime.now().strftime(config.REPORT_DATE_FORMAT)
         
-        records = self.db.get_attendance_by_date(date)
+        records = self.db.get_attendance_by_date(date, subject=subject)
         
         # Create report filename
-        filename = f"daily_report_{date}.txt"
+        subject_slug = f"_{subject.replace(' ', '_')}" if subject else ""
+        filename = f"daily_report_{date}{subject_slug}.txt"
         report_path = os.path.join(self.reports_path, filename)
         
         # Calculate statistics
@@ -94,6 +102,8 @@ class ReportGenerator:
             f.write(" " * 15 + "DAILY ATTENDANCE REPORT\n")
             f.write("="*70 + "\n\n")
             f.write(f"Date: {date}\n")
+            if subject:
+                f.write(f"Subject: {subject}\n")
             f.write(f"Generated: {datetime.now().strftime(config.REPORT_DATETIME_FORMAT)}\n\n")
             f.write("-"*70 + "\n")
             f.write("SUMMARY\n")
@@ -111,18 +121,24 @@ class ReportGenerator:
             f.write("="*70 + "\n\n")
             
             # Write header
-            f.write(f"{'Student ID':<25} {'Name':<20} {'Entry':<10} {'Exit':<10} {'Duration':<10} {'Status':<10}\n")
+            f.write(
+                f"{'Student ID':<25} {'Name':<20} {'Entry':<10} {'Exit':<10} "
+                f"{'Duration':<10} {'Status':<10} {'Subject':<18}\n"
+            )
             f.write("-"*70 + "\n")
             
             # Write records
             for record in records:
-                student_id, name, entry_time, exit_time, duration, status, _ = record
+                student_id, name, entry_time, exit_time, duration, status, _, record_subject = record
                 
                 # Extract time only
                 entry_time_only = entry_time.split()[1] if ' ' in entry_time else entry_time
                 exit_time_only = exit_time.split()[1] if ' ' in exit_time else exit_time
                 
-                f.write(f"{student_id:<25} {name:<20} {entry_time_only:<10} {exit_time_only:<10} {duration:<10} {status:<10}\n")
+                f.write(
+                    f"{student_id:<25} {name:<20} {entry_time_only:<10} "
+                    f"{exit_time_only:<10} {duration:<10} {status:<10} {record_subject:<18}\n"
+                )
             
             f.write("\n" + "="*70 + "\n")
             f.write("END OF REPORT\n")
@@ -189,18 +205,24 @@ class ReportGenerator:
             f.write("="*70 + "\n\n")
             
             # Write header
-            f.write(f"{'Date':<15} {'Entry Time':<12} {'Exit Time':<12} {'Duration':<12} {'Status':<10}\n")
+            f.write(
+                f"{'Date':<15} {'Entry Time':<12} {'Exit Time':<12} "
+                f"{'Duration':<12} {'Status':<10} {'Subject':<18}\n"
+            )
             f.write("-"*70 + "\n")
             
             # Write records
             for record in records:
-                _, _, entry_time, exit_time, duration, status, date = record
+                _, _, entry_time, exit_time, duration, status, date, subject = record
                 
                 # Extract time only
                 entry_time_only = entry_time.split()[1] if ' ' in entry_time else entry_time
                 exit_time_only = exit_time.split()[1] if ' ' in exit_time else exit_time
                 
-                f.write(f"{date:<15} {entry_time_only:<12} {exit_time_only:<12} {duration:<12} {status:<10}\n")
+                f.write(
+                    f"{date:<15} {entry_time_only:<12} {exit_time_only:<12} "
+                    f"{duration:<12} {status:<10} {subject:<18}\n"
+                )
             
             f.write("\n" + "="*70 + "\n")
             f.write("END OF REPORT\n")

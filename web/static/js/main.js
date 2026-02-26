@@ -1,74 +1,62 @@
-// Main JavaScript file
-console.log('Smart Attendance System loaded');
+﻿function showNotification(message, type = "info") {
+    const host = document.body;
+    const node = document.createElement("div");
+    node.className = `toast toast-${type}`;
+    node.textContent = message;
+    host.appendChild(node);
 
-// Utility function to show notifications
-function showNotification(message, type = 'info') {
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = `notification notification-${type}`;
-    notification.textContent = message;
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 1rem 1.5rem;
-        background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
-        color: white;
-        border-radius: 6px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        z-index: 1000;
-        animation: slideIn 0.3s ease-out;
-    `;
-    
-    document.body.appendChild(notification);
-    
-    // Remove after 3 seconds
+    requestAnimationFrame(() => node.classList.add("show"));
+
     setTimeout(() => {
-        notification.style.animation = 'slideOut 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
-    }, 3000);
+        node.classList.remove("show");
+        setTimeout(() => node.remove(), 400);
+    }, 3500);
 }
 
-// Add animation styles
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideIn {
-        from {
-            transform: translateX(400px);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-    
-    @keyframes slideOut {
-        from {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(400px);
-            opacity: 0;
-        }
-    }
-`;
-document.head.appendChild(style);
+async function apiRequest(url, options = {}) {
+    const apiKey = window.localStorage.getItem("SMART_ATTENDANCE_API_KEY") || "";
+    const config = {
+        headers: {
+            "Content-Type": "application/json",
+            ...(apiKey ? { "X-API-Key": apiKey } : {}),
+            ...(options.headers || {}),
+        },
+        ...options,
+    };
 
-// Format date and time
-function formatDateTime(dateTimeString) {
-    const date = new Date(dateTimeString);
-    return date.toLocaleString();
+    const response = await fetch(url, config);
+    let payload = {};
+    try {
+        payload = await response.json();
+    } catch (error) {
+        payload = { success: false, message: "Invalid server response" };
+    }
+
+    if (!response.ok || payload.success === false) {
+        const message = payload.message || `Request failed (${response.status})`;
+        throw new Error(message);
+    }
+
+    return payload;
 }
 
-// Format duration
+function formatDateTime(value) {
+    if (!value) {
+        return "-";
+    }
+    const parsed = new Date(value.replace(" ", "T"));
+    if (Number.isNaN(parsed.getTime())) {
+        return value;
+    }
+    return parsed.toLocaleString();
+}
+
 function formatDuration(minutes) {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    
-    if (hours > 0) {
-        return `${hours}h ${mins}m`;
+    const total = Number(minutes) || 0;
+    const hrs = Math.floor(total / 60);
+    const mins = total % 60;
+    if (!hrs) {
+        return `${mins}m`;
     }
-    return `${mins}m`;
+    return `${hrs}h ${mins}m`;
 }

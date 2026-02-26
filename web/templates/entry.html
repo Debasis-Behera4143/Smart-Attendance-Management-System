@@ -1,72 +1,114 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
-{% block title %}Entry Camera{% endblock %}
+{% block title %}Entry Camera | Smart Attendance{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="page-header">
-        <h1>🚪 Entry Camera System</h1>
-        <p class="text-muted">Mark student entry time</p>
+<section
+    class="container"
+    id="entryRoot"
+    data-scan-interval-ms="{{ (settings.recognition_interval_seconds * 1000) | int }}"
+    data-default-run-interval="{{ settings.run_interval_seconds }}"
+    data-default-session-duration="{{ settings.session_duration_minutes }}"
+    data-default-motion-threshold="{{ settings.fair_motion_threshold }}"
+>
+    <div class="page-head">
+        <h1>Entry Camera</h1>
+        <p>Real-time facial recognition for entry attendance tracking.</p>
     </div>
 
-    <div class="camera-page-container">
-        <div class="card camera-card">
-            <div class="card-header">
-                <h3>Live Camera Feed</h3>
-                <span class="status-indicator" id="statusIndicator">
-                    <span class="status-dot"></span> Ready
-                </span>
+    <div class="split-layout camera-layout">
+        <section class="card">
+            <div class="card-head">
+                <h2>Live Feed</h2>
+                <span class="live-pill" id="liveStatus">Idle</span>
             </div>
             <div class="card-body">
-                <div class="camera-viewport">
-                    <video id="video" autoplay></video>
-                    <canvas id="canvas" style="display:none;"></canvas>
-                    <div class="camera-overlay" id="overlay">
-                        <div class="scan-line"></div>
-                    </div>
+                <div class="camera-panel large">
+                    <video id="liveVideo" autoplay playsinline muted></video>
+                    <canvas id="frameCanvas" hidden></canvas>
                 </div>
 
-                <div class="camera-controls">
-                    <button id="startBtn" class="btn btn-primary">Start Camera</button>
-                    <button id="stopBtn" class="btn btn-danger" disabled>Stop Camera</button>
-                    <button id="recognizeBtn" class="btn btn-success" disabled>Recognize Face</button>
+                <div class="toolbar">
+                    <button id="startCameraBtn" class="btn btn-primary">Start Camera</button>
+                    <button id="stopCameraBtn" class="btn btn-secondary" disabled>Stop Camera</button>
+                    <button id="scanOnceBtn" class="btn btn-secondary" disabled>Scan Once</button>
+                    <button id="toggleMonitorBtn" class="btn btn-ghost" disabled>Start Auto Monitor</button>
                 </div>
 
-                <div id="resultBox" class="result-box" style="display:none;">
-                    <h4>Recognition Result</h4>
+                <div id="resultBox" class="result-box" hidden>
+                    <h3>Recognition Result</h3>
                     <div id="resultContent"></div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <div class="info-sidebar">
-            <div class="card">
-                <div class="card-header">
-                    <h4>ℹ️ Instructions</h4>
+        <aside class="stack">
+            <section class="card">
+                <div class="card-head">
+                    <h2>Teacher Controls</h2>
                 </div>
                 <div class="card-body">
-                    <ol>
-                        <li>Click "Start Camera"</li>
-                        <li>Stand in front of the camera</li>
-                        <li>Click "Recognize Face"</li>
-                        <li>Entry time will be marked automatically</li>
-                    </ol>
+                    <label class="field">
+                        <span>Active Subject</span>
+                        <select id="activeSubject" class="input">
+                            {% for subject in settings.subject_options %}
+                            <option value="{{ subject }}" {% if settings.active_subject == subject %}selected{% endif %}>{{ subject }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>Camera Policy</span>
+                        <select id="cameraPolicy" class="input">
+                            <option value="on_demand" {% if settings.camera_policy == 'on_demand' %}selected{% endif %}>On-demand scan</option>
+                            <option value="always_on" {% if settings.camera_policy == 'always_on' %}selected{% endif %}>Always on monitoring</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>Run Mode</span>
+                        <select id="cameraRunMode" class="input">
+                            <option value="once" {% if settings.camera_run_mode == 'once' %}selected{% endif %}>Run Once and Record</option>
+                            <option value="session" {% if settings.camera_run_mode == 'session' %}selected{% endif %}>Class Session (Till Class Over)</option>
+                            <option value="interval" {% if settings.camera_run_mode == 'interval' %}selected{% endif %}>Timed Fair Check</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>Session Duration (minutes)</span>
+                        <input id="sessionDuration" type="number" min="1" class="input" value="{{ settings.session_duration_minutes }}">
+                    </label>
+                    <label class="field">
+                        <span>Interval Check (seconds)</span>
+                        <input id="runInterval" type="number" min="3" class="input" value="{{ settings.run_interval_seconds }}">
+                    </label>
+                    <label class="field">
+                        <span>Fair Motion Threshold (0-1)</span>
+                        <input id="motionThreshold" type="number" min="0" max="1" step="0.001" class="input" value="{{ settings.fair_motion_threshold }}">
+                    </label>
+                    <label class="toggle">
+                        <input id="useYolo" type="checkbox" {% if settings.use_yolo %}checked{% endif %} {% if not settings.yolo_supported %}disabled{% endif %}>
+                        <span>Use YOLO Detector</span>
+                    </label>
+                    <p class="meta-note">
+                        {% if settings.yolo_supported %}
+                            YOLO Status: <strong style="color: var(--success);">Available</strong>
+                        {% else %}
+                            YOLO Status: <strong style="color: var(--warning);">Not Available</strong>
+                        {% endif %}
+                    </p>
+                    <p class="meta-note">Run Once = single click, Session = continuous monitoring until timer ends, Timed Fair Check = periodic recognition with movement check.</p>
                 </div>
-            </div>
+            </section>
 
-            <div class="card">
-                <div class="card-header">
-                    <h4>📋 Recent Entries</h4>
+            <section class="card">
+                <div class="card-head">
+                    <h2>Recent Entries</h2>
                 </div>
                 <div class="card-body">
-                    <div id="recentEntries">
-                        <p class="text-muted">No entries yet</p>
-                    </div>
+                    <div id="recentEntriesList" class="activity-list"></div>
                 </div>
-            </div>
-        </div>
+            </section>
+        </aside>
     </div>
-</div>
+</section>
 {% endblock %}
 
 {% block extra_js %}

@@ -15,7 +15,13 @@ Flask>=3.0.0
 # For Linux/Mac: pip install dlib
 
 # Additional dependencies
-setuptools>=80.0.0
+# face_recognition_models currently imports pkg_resources, so keep setuptools < 81.
+setuptools>=80,<81
+waitress>=3.0.0
+
+# YOLO-based face detection backend
+# Provides more accurate and faster face detection
+ultralytics>=8.3.0
 
 # Database
 # SQLite is included with Python, no external dependency needed

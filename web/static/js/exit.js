@@ -1,179 +1,352 @@
-// Exit Camera Page JavaScript
-
-let video = null;
 let stream = null;
-let recognitionInterval = null;
+let monitorTimer = null;
+let sessionStopTimer = null;
+let isBusy = false;
+let lastGrayFrame = null;
 
-document.addEventListener('DOMContentLoaded', function() {
-    video = document.getElementById('video');
-    
-    const startCameraBtn = document.getElementById('startCamera');
-    const stopCameraBtn = document.getElementById('stopCamera');
-    const recognizeBtn = document.getElementById('recognizeBtn');
-    
-    // Start camera
-    startCameraBtn.addEventListener('click', async function() {
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: 640, height: 480 } 
-            });
-            video.srcObject = stream;
-            
-            startCameraBtn.disabled = true;
-            stopCameraBtn.disabled = false;
-            recognizeBtn.disabled = false;
-            
-            showNotification('Exit camera started', 'success');
-        } catch (error) {
-            showNotification('Failed to access camera: ' + error.message, 'error');
+document.addEventListener("DOMContentLoaded", () => {
+    const root = document.getElementById("exitRoot");
+    if (!root) {
+        return;
+    }
+
+    const baseScanInterval = Number(root.dataset.scanIntervalMs || 1500);
+    const defaultRunInterval = Number(root.dataset.defaultRunInterval || 45);
+    const defaultSessionDuration = Number(root.dataset.defaultSessionDuration || 90);
+    const defaultMotionThreshold = Number(root.dataset.defaultMotionThreshold || 0.018);
+
+    const video = document.getElementById("liveVideo");
+    const canvas = document.getElementById("frameCanvas");
+    const startBtn = document.getElementById("startCameraBtn");
+    const stopBtn = document.getElementById("stopCameraBtn");
+    const scanBtn = document.getElementById("scanOnceBtn");
+    const monitorBtn = document.getElementById("toggleMonitorBtn");
+    const statusNode = document.getElementById("liveStatus");
+    const resultBox = document.getElementById("resultBox");
+    const resultContent = document.getElementById("resultContent");
+    const recentList = document.getElementById("recentExitsList");
+    const cameraPolicy = document.getElementById("cameraPolicy");
+    const useYolo = document.getElementById("useYolo");
+    const activeSubject = document.getElementById("activeSubject");
+    const cameraRunMode = document.getElementById("cameraRunMode");
+    const runInterval = document.getElementById("runInterval");
+    const sessionDuration = document.getElementById("sessionDuration");
+    const motionThreshold = document.getElementById("motionThreshold");
+
+    runInterval.value = runInterval.value || String(defaultRunInterval);
+    sessionDuration.value = sessionDuration.value || String(defaultSessionDuration);
+    motionThreshold.value = motionThreshold.value || String(defaultMotionThreshold);
+
+    const setStatus = (text) => {
+        statusNode.textContent = text;
+    };
+
+    const monitorRunning = () => Boolean(monitorTimer);
+
+    const getSelectedMode = () => (cameraRunMode.value || "once").trim();
+
+    const getIntervalMsForMode = () => {
+        const mode = getSelectedMode();
+        if (mode === "interval") {
+            const seconds = Math.max(3, Number(runInterval.value || defaultRunInterval));
+            return Math.round(seconds * 1000);
         }
-    });
-    
-    // Stop camera
-    stopCameraBtn.addEventListener('click', function() {
+        return Math.max(600, baseScanInterval);
+    };
+
+    const updateMonitorButton = () => {
+        const mode = getSelectedMode();
+        if (mode === "once") {
+            monitorBtn.textContent = "Run Once Mode";
+            monitorBtn.disabled = true;
+            return;
+        }
+        monitorBtn.disabled = !stream;
+        monitorBtn.textContent = monitorRunning() ? "Stop Monitor" : "Start Monitor";
+    };
+
+    const clearSessionTimer = () => {
+        if (sessionStopTimer) {
+            clearTimeout(sessionStopTimer);
+            sessionStopTimer = null;
+        }
+    };
+
+    const stopMonitoring = () => {
+        if (monitorTimer) {
+            clearInterval(monitorTimer);
+            monitorTimer = null;
+        }
+        clearSessionTimer();
+        updateMonitorButton();
+    };
+
+    const stopCamera = () => {
+        stopMonitoring();
         if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            video.srcObject = null;
-            
-            if (recognitionInterval) {
-                clearInterval(recognitionInterval);
-                recognitionInterval = null;
-            }
-            
-            startCameraBtn.disabled = false;
-            stopCameraBtn.disabled = true;
-            recognizeBtn.disabled = true;
-            recognizeBtn.textContent = 'Start Recognition';
-            
-            showNotification('Camera stopped', 'info');
+            stream.getTracks().forEach((track) => track.stop());
         }
-    });
-    
-    // Start/Stop recognition
-    recognizeBtn.addEventListener('click', function() {
-        if (recognitionInterval) {
-            // Stop recognition
-            clearInterval(recognitionInterval);
-            recognitionInterval = null;
-            recognizeBtn.textContent = 'Start Recognition';
-            recognizeBtn.classList.remove('btn-danger');
-            recognizeBtn.classList.add('btn-success');
-            showNotification('Recognition stopped', 'info');
-        } else {
-            // Start recognition
-            recognitionInterval = setInterval(recognizeFace, 2000); // Recognize every 2 seconds
-            recognizeBtn.textContent = 'Stop Recognition';
-            recognizeBtn.classList.remove('btn-success');
-            recognizeBtn.classList.add('btn-danger');
-            showNotification('Recognition started - position your face in the camera', 'info');
-        }
-    });
-});
+        stream = null;
+        video.srcObject = null;
+        lastGrayFrame = null;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        scanBtn.disabled = true;
+        monitorBtn.disabled = true;
+        setStatus("Idle");
+    };
 
-async function recognizeFace() {
-    try {
-        // Create canvas to capture frame
-        const canvas = document.createElement('canvas');
+    const captureFrame = () => {
+        if (!video.videoWidth || !video.videoHeight) {
+            return null;
+        }
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        const context = canvas.getContext('2d');
+        const context = canvas.getContext("2d");
         context.drawImage(video, 0, 0);
-        
-        const imageData = canvas.toDataURL('image/jpeg');
-        
-        // Send to backend for recognition
-        const response = await fetch('/api/mark-exit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: imageData })
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        return {
+            jpeg: canvas.toDataURL("image/jpeg", 0.85),
+            pixels: imageData.data,
+        };
+    };
+
+    const computeMotionScore = (pixelBuffer) => {
+        const sampleStep = 16;
+        const current = [];
+
+        for (let i = 0; i < pixelBuffer.length; i += sampleStep) {
+            const r = pixelBuffer[i] || 0;
+            const g = pixelBuffer[i + 1] || 0;
+            const b = pixelBuffer[i + 2] || 0;
+            current.push((r + g + b) / 3);
+        }
+
+        if (!lastGrayFrame) {
+            lastGrayFrame = current;
+            return 1;
+        }
+
+        let moved = 0;
+        const threshold = 22;
+        const size = Math.min(lastGrayFrame.length, current.length);
+        for (let idx = 0; idx < size; idx += 1) {
+            if (Math.abs(current[idx] - lastGrayFrame[idx]) > threshold) {
+                moved += 1;
+            }
+        }
+        lastGrayFrame = current;
+        return size ? moved / size : 0;
+    };
+
+    const renderRecent = (records) => {
+        if (!records.length) {
+            recentList.innerHTML = '<p class="meta-note">No exits yet.</p>';
+            return;
+        }
+
+        recentList.innerHTML = records
+            .map(
+                (record) => `
+                    <article class="activity-item">
+                        <div>
+                            <strong>${record.name}</strong>
+                            <p>${record.subject} | ${record.status} | ${formatDuration(record.duration)}</p>
+                        </div>
+                        <time>${formatDateTime(record.exit_time)}</time>
+                    </article>
+                `
+            )
+            .join("");
+    };
+
+    const loadRecent = async () => {
+        try {
+            const payload = await apiRequest("/api/recent-exits");
+            renderRecent(payload.exits || []);
+        } catch (error) {
+            recentList.innerHTML = `<p class="meta-note">${error.message}</p>`;
+        }
+    };
+
+    const persistSettings = async () => {
+        const settingsPayload = {
+            camera_policy: cameraPolicy.value,
+            camera_run_mode: cameraRunMode.value,
+            active_subject: activeSubject.value,
+            run_interval_seconds: Number(runInterval.value || defaultRunInterval),
+            session_duration_minutes: Number(sessionDuration.value || defaultSessionDuration),
+            fair_motion_threshold: Number(motionThreshold.value || defaultMotionThreshold),
+            use_yolo: useYolo.checked,
+        };
+
+        const payload = await apiRequest("/api/settings", {
+            method: "POST",
+            body: JSON.stringify(settingsPayload),
         });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // Determine attendance status color
-            let statusClass = 'warning';
-            if (data.attendance_status === 'PRESENT') {
-                statusClass = 'success';
-            } else if (data.attendance_status === 'ABSENT') {
-                statusClass = 'danger';
-            }
-            
-            // Display success
-            document.getElementById('recognitionResult').innerHTML = `
-                <div class="alert alert-${statusClass}">
-                    <h4>✓ Exit Marked!</h4>
-                    <p><strong>Student:</strong> ${data.student_name}</p>
-                    <p><strong>Roll Number:</strong> ${data.roll_number}</p>
-                    <p><strong>Entry Time:</strong> ${formatDateTime(data.entry_time)}</p>
-                    <p><strong>Exit Time:</strong> ${formatDateTime(data.exit_time)}</p>
-                    <p><strong>Duration:</strong> ${formatDuration(data.duration_minutes)}</p>
-                    <p><strong>Status:</strong> <span class="badge bg-${statusClass}">${data.attendance_status}</span></p>
-                </div>
-            `;
-            
-            showNotification(`Exit marked for ${data.student_name} - ${data.attendance_status}`, 'success');
-            
-            // Stop recognition after successful exit
-            if (recognitionInterval) {
-                clearInterval(recognitionInterval);
-                recognitionInterval = null;
-                document.getElementById('recognizeBtn').textContent = 'Start Recognition';
-                document.getElementById('recognizeBtn').classList.remove('btn-danger');
-                document.getElementById('recognizeBtn').classList.add('btn-success');
-            }
-            
-            // Reload recent exits
-            loadRecentExits();
-            
-        } else if (data.message === 'Face not recognized') {
-            document.getElementById('recognitionResult').innerHTML = `
-                <div class="alert alert-warning">
-                    <p>❌ Face not recognized. Please try again.</p>
-                </div>
-            `;
-        } else {
-            showNotification(data.message, 'warning');
-        }
-        
-    } catch (error) {
-        console.error('Recognition error:', error);
-    }
-}
 
-async function loadRecentExits() {
-    try {
-        const response = await fetch('/api/recent-exits');
-        const data = await response.json();
-        
-        if (data.success) {
-            const tbody = document.getElementById('recentExits');
-            tbody.innerHTML = '';
-            
-            data.exits.forEach(exit => {
-                let statusClass = 'warning';
-                if (exit.attendance_status === 'PRESENT') {
-                    statusClass = 'success';
-                } else if (exit.attendance_status === 'ABSENT') {
-                    statusClass = 'danger';
-                }
-                
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${exit.student_name}</td>
-                    <td>${exit.roll_number}</td>
-                    <td>${formatDateTime(exit.entry_time)}</td>
-                    <td>${formatDateTime(exit.exit_time)}</td>
-                    <td>${formatDuration(exit.duration_minutes)}</td>
-                    <td><span class="badge bg-${statusClass}">${exit.attendance_status}</span></td>
-                `;
-                tbody.appendChild(row);
+        if (payload.settings && payload.settings.yolo_supported === false) {
+            useYolo.checked = false;
+            useYolo.disabled = true;
+        }
+    };
+
+    const showResult = (data) => {
+        const statusClass = data.attendance_status === "PRESENT" ? "pill-success" : "pill-danger";
+        resultBox.hidden = false;
+        resultContent.innerHTML = `
+            <dl class="result-grid">
+                <dt>Student</dt><dd>${data.student_name}</dd>
+                <dt>ID</dt><dd>${data.student_id}</dd>
+                <dt>Subject</dt><dd>${data.subject || activeSubject.value}</dd>
+                <dt>Entry</dt><dd>${formatDateTime(data.entry_time)}</dd>
+                <dt>Exit</dt><dd>${formatDateTime(data.exit_time)}</dd>
+                <dt>Duration</dt><dd>${formatDuration(data.duration_minutes)}</dd>
+                <dt>Status</dt><dd><span class="pill ${statusClass}">${data.attendance_status}</span></dd>
+            </dl>
+        `;
+    };
+
+    const scanOnce = async () => {
+        if (isBusy || !stream) {
+            return;
+        }
+
+        const capture = captureFrame();
+        if (!capture) {
+            return;
+        }
+
+        const mode = getSelectedMode();
+        if (mode === "interval") {
+            const motionScore = computeMotionScore(capture.pixels);
+            const requiredMotion = Math.max(0, Number(motionThreshold.value || defaultMotionThreshold));
+            if (motionScore < requiredMotion) {
+                setStatus("Fair Check: no movement");
+                return;
+            }
+        }
+
+        isBusy = true;
+        setStatus("Scanning...");
+
+        try {
+            const data = await apiRequest("/api/recognize-exit", {
+                method: "POST",
+                body: JSON.stringify({ image: capture.jpeg, subject: activeSubject.value }),
             });
-        }
-    } catch (error) {
-        console.error('Error loading recent exits:', error);
-    }
-}
 
-// Load recent exits on page load
-loadRecentExits();
+            showResult(data);
+            setStatus("Matched");
+            showNotification(`${data.student_name} marked ${data.attendance_status}`, "success");
+            await loadRecent();
+        } catch (error) {
+            setStatus("No Match");
+            showNotification(error.message, "warning");
+        } finally {
+            isBusy = false;
+        }
+    };
+
+    const startMonitoringForMode = () => {
+        const mode = getSelectedMode();
+        if (mode === "once") {
+            updateMonitorButton();
+            return;
+        }
+
+        stopMonitoring();
+        const intervalMs = getIntervalMsForMode();
+        monitorTimer = setInterval(scanOnce, intervalMs);
+
+        if (mode === "session") {
+            const totalMinutes = Math.max(1, Number(sessionDuration.value || defaultSessionDuration));
+            sessionStopTimer = setTimeout(() => {
+                stopMonitoring();
+                setStatus("Session completed");
+                showNotification("Class session monitor completed", "info");
+            }, totalMinutes * 60 * 1000);
+        }
+
+        updateMonitorButton();
+    };
+
+    startBtn.addEventListener("click", async () => {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+                audio: false,
+            });
+            video.srcObject = stream;
+            lastGrayFrame = null;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            scanBtn.disabled = false;
+            setStatus("Camera On");
+            updateMonitorButton();
+            showNotification("Exit camera started", "success");
+
+            if (cameraPolicy.value === "always_on" && getSelectedMode() !== "once") {
+                startMonitoringForMode();
+            }
+        } catch (error) {
+            showNotification(error.message, "error");
+        }
+    });
+
+    stopBtn.addEventListener("click", () => {
+        stopCamera();
+        showNotification("Camera stopped", "info");
+    });
+
+    scanBtn.addEventListener("click", scanOnce);
+
+    monitorBtn.addEventListener("click", () => {
+        if (!stream) {
+            showNotification("Start camera first", "warning");
+            return;
+        }
+        if (getSelectedMode() === "once") {
+            showNotification("Run Once mode uses the Scan Once button", "info");
+            return;
+        }
+        if (monitorRunning()) {
+            stopMonitoring();
+            showNotification("Monitoring stopped", "info");
+            return;
+        }
+        startMonitoringForMode();
+        showNotification("Monitoring started", "success");
+    });
+
+    const onSettingsChanged = async () => {
+        try {
+            await persistSettings();
+            updateMonitorButton();
+            showNotification("Teacher settings updated", "success");
+
+            if (!monitorRunning()) {
+                return;
+            }
+            if (getSelectedMode() === "once") {
+                stopMonitoring();
+                return;
+            }
+            startMonitoringForMode();
+        } catch (error) {
+            showNotification(error.message, "error");
+        }
+    };
+
+    cameraPolicy.addEventListener("change", onSettingsChanged);
+    useYolo.addEventListener("change", onSettingsChanged);
+    activeSubject.addEventListener("change", onSettingsChanged);
+    cameraRunMode.addEventListener("change", onSettingsChanged);
+    runInterval.addEventListener("change", onSettingsChanged);
+    sessionDuration.addEventListener("change", onSettingsChanged);
+    motionThreshold.addEventListener("change", onSettingsChanged);
+
+    window.addEventListener("beforeunload", stopCamera);
+    updateMonitorButton();
+    loadRecent();
+});

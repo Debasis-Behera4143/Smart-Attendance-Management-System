@@ -22,40 +22,72 @@ A **final-year level** face recognition-based attendance management system that 
 ```
 Smart-Attendance-System/
 │
-├── dataset/                    # Student face images
-│   ├── student_001_Debasis/
-│   ├── student_002_Rahul/
-│   └── ...
+├── data/                       # All data files organized here
+│   ├── dataset/               # Student face images
+│   │   ├── .gitkeep
+│   │   ├── student_001_Name/
+│   │   └── student_002_Name/
+│   ├── encodings/             # Encoded face data
+│   │   ├── .gitkeep
+│   │   └── face_encodings.pkl
+│   ├── database/              # SQLite database
+│   │   ├── .gitkeep
+│   │   └── attendance.db
+│   ├── logs/                  # System logs
+│   │   ├── .gitkeep
+│   │   └── system_logs.txt
+│   └── reports/               # Generated reports
+│       ├── .gitkeep
+│       ├── attendance_report_*.csv
+│       └── daily_report_*.txt
 │
-├── encodings/                  # Encoded face data
-│   └── face_encodings.pkl
+├── models/                     # YOLO & ML models
+│   └── yolov8n-face.pt        # YOLOv8 nano face detector
 │
-├── database/                   # SQLite database
-│   └── attendance.db
-│
-├── models/                     # ML models (optional)
-│   └── face_detector.xml
-│
-├── logs/                       # System logs
-│   └── system_logs.txt
-│
-├── reports/                    # Generated reports
-│   ├── attendance_report.csv
-│   └── daily_report_*.txt
-│
-├── src/                        # Source code
-│   ├── collect_face_data.py   # Face data collection
+├── src/                        # Core source code
+│   ├── attendance_manager.py  # Attendance logic & duration calc
+│   ├── collect_face_data.py   # Face data collection system
+│   ├── config.py              # Configuration & paths
+│   ├── database_manager.py    # SQLite database operations
 │   ├── encode_faces.py        # Face encoding generation
-│   ├── entry_camera.py        # Entry point system
-│   ├── exit_camera.py         # Exit point system
-│   ├── attendance_manager.py  # Attendance logic
-│   ├── database_manager.py    # Database operations
-│   ├── utils.py               # Report generation
-│   └── config.py              # Configuration
+│   ├── entry_camera.py        # Entry gate system
+│   ├── exit_camera.py         # Exit gate system
+│   ├── rate_limiter.py        # API rate limiting
+│   ├── recognition_service.py # Face recognition with YOLO
+│   ├── utils.py               # Report generation utilities
+│   └── validators.py          # Input validation
 │
-├── main.py                     # Main controller
-├── requirements.txt            # Dependencies
-└── README.md                   # Documentation
+├── web/                        # Flask web application
+│   ├── static/
+│   │   ├── css/
+│   │   │   └── style.css      # Modern UI styling
+│   │   ├── images/
+│   │   │   ├── IGIT.png
+│   │   │   └── MYCOMP.png
+│   │   └── js/
+│   │       ├── main.js        # Common utilities
+│   │       ├── entry.js       # Entry gate logic
+│   │       ├── exit.js        # Exit gate logic
+│   │       ├── register.js    # Student registration
+│   │       ├── reports.js     # Report generation
+│   │       └── student_attendance.js
+│   ├── templates/
+│   │   ├── base.html          # Base template
+│   │   ├── dashboard.html     # Main dashboard
+│   │   ├── entry.html         # Entry gate UI
+│   │   ├── exit.html          # Exit gate UI
+│   │   ├── register.html      # Student registration UI
+│   │   ├── reports.html       # Reports UI
+│   │   └── student_attendance.html
+│   ├── app.py                 # Flask application
+│   └── wsgi.py                # Production WSGI server
+│
+├── .env                        # Environment configuration
+├── .env.example               # Example environment file
+├── .gitignore                 # Git ignore rules
+├── main.py                    # CLI controller (terminal interface)
+├── requirements.txt           # Python dependencies
+└── README.md                  # This file
 ```
 
 ---
@@ -79,8 +111,9 @@ python main.py
 **Naming Convention:**
 ```
 student_001_Debasis/
-student_002_Rahul/
-student_003_Priya/
+student_002_Subham/
+student_003_Surya/
+student_003_Suman/
 ```
 
 ---
@@ -149,6 +182,39 @@ IF Duration >= 90 minutes:
 ELSE:
     Status = ABSENT
 ```
+
+---
+
+## 🌐 Web Interface
+
+The system includes a modern **Flask-based web application** with real-time camera integration and YOLO face detection.
+
+### **Starting the Web Server**
+
+```bash
+# Development mode (recommended)
+python web/wsgi.py
+```
+
+The web application will be available at: **http://127.0.0.1:5000**
+
+### **Web Features**
+
+- 📊 **Dashboard**: System overview and statistics
+- 👨‍🎓 **Student Registration**: Capture face data through browser
+- 🚪 **Entry Gate**: Real-time entry marking with webcam
+- 🚶 **Exit Gate**: Real-time exit marking with attendance calculation
+- 📄 **Reports**: Generate and download attendance reports
+- 📊 **Student Attendance**: View individual attendance records
+- 🚀 **YOLO Integration**: Optional fast face detection (toggle in Entry/Exit gates)
+
+### **Web Application Structure**
+
+- **Frontend**: Modern responsive UI with CSS animations
+- **Backend**: Flask REST API with rate limiting
+- **Camera**: WebRTC-based real-time video streaming
+- **Face Recognition**: face_recognition + optional YOLO detector
+- **Security**: API key authentication, rate limiting, input validation
 
 ---
 
@@ -361,3 +427,38 @@ For any queries or issues, please refer to the documentation or raise an issue.
 ---
 
 **Made with ❤️ for Academic Excellence**
+
+---
+
+## Production Hardening (New)
+
+### Run in production mode (Windows-friendly)
+
+```bash
+pip install -r requirements.txt
+python web/wsgi.py
+```
+
+### Optional environment config
+
+Copy `.env.example` values into your deployment environment variables and set:
+
+- `SMART_ATTENDANCE_DEBUG=false`
+- `SMART_ATTENDANCE_SECRET_KEY=<strong-random-value>`
+- `SMART_ATTENDANCE_API_KEY=<strong-random-value>` (optional)
+- `SMART_ATTENDANCE_REQUIRE_API_KEY=true` (if you enforce API keys)
+
+### New API features
+
+- `GET /api/inside-students?limit=20`
+- `GET /api/analytics?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD`
+- `POST /api/manual-attendance` (manual correction/upsert)
+
+### Reliability upgrades now included
+
+- Atomic exit + attendance writes in one DB transaction
+- Request-size and image-size safeguards
+- Input validation for IDs, names, dates, status values
+- Rate limiting for API endpoints
+- Rotating file logs with request IDs
+- Pagination and filtering on `GET /api/get-attendance`

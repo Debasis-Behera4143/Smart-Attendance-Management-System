@@ -1,0 +1,81 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Student Attendance | Smart Attendance{% endblock %}
+
+{% block content %}
+<section class="container" id="studentAttendanceRoot">
+    <div class="page-head">
+        <h1>Student Attendance Portal</h1>
+        <p>Check personal attendance records and subject-wise statistics.</p>
+    </div>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Find Attendance</h2>
+        </div>
+        <div class="card-body controls-row">
+            <label class="field">
+                <span>Student ID</span>
+                <input id="studentIdInput" class="input" placeholder="Enter your student ID">
+            </label>
+            <label class="field">
+                <span>Subject Filter</span>
+                <select id="studentSubjectFilter" class="input">
+                    <option value="">All Subjects</option>
+                    {% for subject in subjects %}
+                    <option value="{{ subject }}">{{ subject }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button id="loadStudentAttendanceBtn" class="btn btn-primary">Load Attendance</button>
+        </div>
+    </section>
+
+    <section class="card" id="studentMetaCard" hidden>
+        <div class="card-head">
+            <h2>Student Information</h2>
+        </div>
+        <div class="card-body" id="studentMetaBody"></div>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Subject-wise Summary</h2>
+        </div>
+        <div class="card-body">
+            <div id="subjectSummaryGrid" class="stats-grid"></div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Attendance History</h2>
+        </div>
+        <div class="table-wrap">
+            <table class="table" id="studentAttendanceTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Subject</th>
+                        <th>Entry Time</th>
+                        <th>Exit Time</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="studentAttendanceBody">
+                    <tr>
+                        <td colspan="6" class="empty-state" style="text-align: center; padding: 2rem;">
+                            Enter your Student ID and click "Load Attendance" to view records.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/student_attendance.js') }}"></script>
+{% endblock %}

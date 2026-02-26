@@ -1,92 +1,93 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
-{% block title %}Dashboard - Smart Attendance{% endblock %}
+{% block title %}Dashboard | Smart Attendance{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="page-header">
-        <h1>📊 Dashboard</h1>
-        <p class="text-muted">Today's Attendance Overview - {{ stats.date }}</p>
+<section class="container">
+    <div class="page-head">
+        <h1>Attendance Dashboard</h1>
+        <p>Real-time attendance monitoring for {{ stats.date }}</p>
     </div>
 
-    <!-- Statistics Cards -->
     <div class="stats-grid">
-        <div class="stat-card stat-total">
-            <div class="stat-icon">👥</div>
-            <div class="stat-info">
-                <h3>{{ stats.total }}</h3>
-                <p>Total Students</p>
-            </div>
-        </div>
-
-        <div class="stat-card stat-present">
-            <div class="stat-icon">✅</div>
-            <div class="stat-info">
-                <h3>{{ stats.present }}</h3>
-                <p>Present</p>
-            </div>
-        </div>
-
-        <div class="stat-card stat-absent">
-            <div class="stat-icon">❌</div>
-            <div class="stat-info">
-                <h3>{{ stats.absent }}</h3>
-                <p>Absent</p>
-            </div>
-        </div>
-
-        <div class="stat-card stat-rate">
-            <div class="stat-icon">📈</div>
-            <div class="stat-info">
-                <h3>{{ stats.attendance_rate }}%</h3>
-                <p>Attendance Rate</p>
-            </div>
-        </div>
+        <article class="stat-card">
+            <span>Total Students</span>
+            <strong>{{ stats.total }}</strong>
+            <p style="font-size: 0.85rem; color: var(--muted); margin-top: 0.3rem;">Enrolled</p>
+        </article>
+        <article class="stat-card success">
+            <span>Present Today</span>
+            <strong>{{ stats.present }}</strong>
+            <p style="font-size: 0.85rem; color: var(--success); margin-top: 0.3rem;">Active</p>
+        </article>
+        <article class="stat-card danger">
+            <span>Absent Today</span>
+            <strong>{{ stats.absent }}</strong>
+            <p style="font-size: 0.85rem; color: var(--danger); margin-top: 0.3rem;">Missing</p>
+        </article>
+        <article class="stat-card warning">
+            <span>Attendance Rate</span>
+            <strong>{{ stats.attendance_rate }}%</strong>
+            <p style="font-size: 0.85rem; color: var(--warning); margin-top: 0.3rem;">Success Rate</p>
+        </article>
     </div>
 
-    <!-- Today's Attendance Table -->
-    <div class="card">
-        <div class="card-header">
-            <h3>Today's Attendance Records</h3>
+    <div class="quick-links">
+        <a class="btn btn-primary" href="{{ url_for('register_page') }}">Register Student</a>
+        <a class="btn btn-secondary" href="{{ url_for('entry_page') }}">Entry Gate</a>
+        <a class="btn btn-secondary" href="{{ url_for('exit_page') }}">Exit Gate</a>
+        <a class="btn btn-secondary" href="{{ url_for('student_attendance_page') }}">Student Portal</a>
+        <a class="btn btn-ghost" href="{{ url_for('reports_page') }}">View Reports</a>
+    </div>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Today's Attendance Records</h2>
+            <span style="font-size: 0.85rem; color: var(--muted); font-weight: 600;">
+                {{ records|length if records else 0 }} record{{ 's' if records and records|length != 1 else '' }}
+            </span>
         </div>
-        <div class="card-body">
+        <div class="table-wrap">
             {% if records %}
-            <div class="table-responsive">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Student ID</th>
-                            <th>Name</th>
-                            <th>Entry Time</th>
-                            <th>Exit Time</th>
-                            <th>Duration (min)</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for record in records %}
-                        <tr>
-                            <td>{{ record[0] }}</td>
-                            <td>{{ record[1] }}</td>
-                            <td>{{ record[2].split()[1] if ' ' in record[2] else record[2] }}</td>
-                            <td>{{ record[3].split()[1] if ' ' in record[3] else record[3] }}</td>
-                            <td>{{ record[4] }}</td>
-                            <td>
-                                <span class="badge badge-{{ 'success' if record[5] == 'PRESENT' else 'danger' }}">
-                                    {{ record[5] }}
-                                </span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Student ID</th>
+                        <th>Name</th>
+                        <th>Entry Time</th>
+                        <th>Exit Time</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                        <th>Subject</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for record in records %}
+                    <tr>
+                        <td><strong>{{ record[0] }}</strong></td>
+                        <td>{{ record[1] }}</td>
+                        <td>{{ record[2].split()[1] if ' ' in record[2] else record[2] }}</td>
+                        <td>{{ record[3].split()[1] if record[3] and ' ' in record[3] else (record[3] if record[3] else '-') }}</td>
+                        <td>{{ record[4] if record[4] else '-' }} min</td>
+                        <td>
+                            <span class="pill {% if record[5] == 'PRESENT' %}pill-success{% else %}pill-danger{% endif %}">
+                                {{ record[5] }}
+                            </span>
+                        </td>
+                        <td>{{ record[7] if record|length > 7 and record[7] else 'N/A' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
             {% else %}
             <div class="empty-state">
-                <p>No attendance records for today</p>
+                <p style="text-align: center; padding: 2rem; color: var(--muted);">
+                    No attendance records available for today.<br>
+                    <small>Records will appear once students check in through the Entry gate.</small>
+                </p>
             </div>
             {% endif %}
         </div>
-    </div>
-</div>
+    </section>
+</section>
 {% endblock %}

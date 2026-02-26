@@ -1,167 +1,244 @@
-// Register Student Page JavaScript
-
-let video = null;
-let canvas = null;
-let context = null;
 let stream = null;
+let autoCaptureTimer = null;
 let capturedImages = [];
-const TOTAL_IMAGES = 20;
 
-document.addEventListener('DOMContentLoaded', function() {
-    video = document.getElementById('video');
-    canvas = document.getElementById('canvas');
-    context = canvas.getContext('2d');
-    
-    const startCameraBtn = document.getElementById('startCamera');
-    const stopCameraBtn = document.getElementById('stopCamera');
-    const captureBtn = document.getElementById('captureBtn');
-    const registerForm = document.getElementById('registerForm');
-    
-    // Start camera
-    startCameraBtn.addEventListener('click', async function() {
+const captureState = {
+    running: false,
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+    const root = document.getElementById("registerRoot");
+    if (!root) {
+        return;
+    }
+
+    const totalImages = Number(root.dataset.totalImages || 20);
+    const video = document.getElementById("videoPreview");
+    const canvas = document.getElementById("captureCanvas");
+    const nameInput = document.getElementById("nameInput");
+    const rollInput = document.getElementById("rollInput");
+    const startBtn = document.getElementById("startCameraBtn");
+    const stopBtn = document.getElementById("stopCameraBtn");
+    const autoBtn = document.getElementById("autoCaptureBtn");
+    const clearBtn = document.getElementById("clearCaptureBtn");
+    const submitBtn = document.getElementById("submitBtn");
+    const captureCount = document.getElementById("captureCount");
+    const capturedGrid = document.getElementById("capturedGrid");
+    const form = document.getElementById("registerForm");
+
+    const setCaptureCount = () => {
+        captureCount.textContent = `${capturedImages.length} / ${totalImages}`;
+        submitBtn.disabled = capturedImages.length < totalImages;
+    };
+
+    const stopAutoCapture = () => {
+        captureState.running = false;
+        if (autoCaptureTimer) {
+            clearInterval(autoCaptureTimer);
+            autoCaptureTimer = null;
+        }
+        autoBtn.textContent = "Auto Capture";
+    };
+
+    const stopCamera = () => {
+        if (stream) {
+            stream.getTracks().forEach((track) => track.stop());
+        }
+        stream = null;
+        video.srcObject = null;
+        stopAutoCapture();
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        autoBtn.disabled = true;
+    };
+
+    const captureFrame = () => {
+        if (!stream || capturedImages.length >= totalImages) {
+            return;
+        }
+        if (!video.videoWidth || !video.videoHeight) {
+            return;
+        }
+
+        const width = 360;
+        const height = 270;
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, width, height);
+        const imageData = canvas.toDataURL("image/jpeg", 0.9);
+        capturedImages.push(imageData);
+
+        const thumb = document.createElement("img");
+        thumb.src = imageData;
+        thumb.alt = `capture-${capturedImages.length}`;
+        capturedGrid.appendChild(thumb);
+
+        setCaptureCount();
+        if (capturedImages.length >= totalImages) {
+            stopAutoCapture();
+            showNotification("All samples captured", "success");
+        }
+    };
+
+    startBtn.addEventListener("click", async () => {
         try {
-            stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: 640, height: 480 } 
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: "user",
+                },
+                audio: false,
             });
             video.srcObject = stream;
-            
-            startCameraBtn.disabled = true;
-            stopCameraBtn.disabled = false;
-            captureBtn.disabled = false;
-            
-            showNotification('Camera started successfully', 'success');
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            autoBtn.disabled = false;
+            showNotification("Camera started", "success");
         } catch (error) {
-            showNotification('Failed to access camera: ' + error.message, 'error');
+            showNotification(error.message, "error");
         }
     });
-    
-    // Stop camera
-    stopCameraBtn.addEventListener('click', function() {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            video.srcObject = null;
-            
-            startCameraBtn.disabled = false;
-            stopCameraBtn.disabled = true;
-            captureBtn.disabled = true;
-            
-            showNotification('Camera stopped', 'info');
-        }
+
+    stopBtn.addEventListener("click", () => {
+        stopCamera();
+        showNotification("Camera stopped", "info");
     });
-    
-    // Capture images
-    captureBtn.addEventListener('click', function() {
-        if (capturedImages.length >= TOTAL_IMAGES) {
-            showNotification('Already captured 20 images', 'info');
+
+    autoBtn.addEventListener("click", () => {
+        if (!stream) {
+            showNotification("Start camera first", "warning");
+            return;
+        }
+        if (capturedImages.length >= totalImages) {
+            showNotification("Target image count already reached", "info");
+            return;
+        }
+        if (captureState.running) {
+            stopAutoCapture();
+            showNotification("Auto capture paused", "info");
+            return;
+        }
+
+        captureState.running = true;
+        autoBtn.textContent = "Pause Capture";
+        autoCaptureTimer = setInterval(() => {
+            captureFrame();
+            if (capturedImages.length >= totalImages) {
+                stopAutoCapture();
+            }
+        }, 300);
+    });
+
+    clearBtn.addEventListener("click", () => {
+        capturedImages = [];
+        capturedGrid.innerHTML = "";
+        setCaptureCount();
+        stopAutoCapture();
+    });
+
+    // Auto-format roll number as user types (matches backend logic)
+    rollInput.addEventListener("input", () => {
+        const original = rollInput.value;
+        if (!original) {
+            rollInput.style.borderColor = '';
+            rollInput.title = '';
             return;
         }
         
-        // Capture image
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0);
+        // Simulate backend formatting logic
+        let cleaned = original.toUpperCase();
         
-        const imageData = canvas.toDataURL('image/jpeg');
-        capturedImages.push(imageData);
+        // Remove separators first
+        cleaned = cleaned.replace(/[\s\-_/.,:\(\)\[\]]+/g, '');
         
-        // Display thumbnail
-        const img = document.createElement('img');
-        img.src = imageData;
-        document.getElementById('capturedImages').appendChild(img);
+        // Remove common prefixes (same order as backend)
+        const prefixes = [
+            'ROLLNUMBER', 'ROLLNO',
+            'STUDENTNUMBER', 'STUDENTID', 'STUDENTNO', 'STUDENT',
+            'REGISTRATIONNO', 'REGISTRATION',
+            'REGNUMBER', 'REGNO', 'REG',
+            'IDNUMBER', 'IDNO', 'ID',
+            'ROLL', 'NUMBER', 'NO',
+        ];
         
-        // Update button text
-        captureBtn.textContent = `Capture Images (${capturedImages.length}/20)`;
+        for (const prefix of prefixes) {
+            if (cleaned.startsWith(prefix)) {
+                cleaned = cleaned.substring(prefix.length);
+                break;
+            }
+        }
         
-        // Enable submit button when enough images captured
-        if (capturedImages.length >= TOTAL_IMAGES) {
-            document.getElementById('submitBtn').disabled = false;
-            captureBtn.disabled = true;
-            showNotification('All images captured! Click Register Student', 'success');
+        // Remove any remaining non-alphanumeric
+        cleaned = cleaned.replace(/[^A-Z0-9]/g, '');
+        
+        // Show helpful hint if formatting occurred
+        if (cleaned !== original.toUpperCase() && cleaned.length > 0) {
+            rollInput.style.borderColor = '#4CAF50';
+            rollInput.style.borderWidth = '2px';
+            rollInput.title = `Will be formatted as: ${cleaned}`;
         } else {
-            showNotification(`Captured ${capturedImages.length}/${TOTAL_IMAGES}`, 'success');
+            rollInput.style.borderColor = '';
+            rollInput.style.borderWidth = '';
+            rollInput.title = '';
         }
     });
-    
-    // Submit registration form
-    registerForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        const name = document.getElementById('name').value;
-        const rollNumber = document.getElementById('rollNumber').value;
-        
-        if (capturedImages.length < TOTAL_IMAGES) {
-            showNotification('Please capture all 20 images first', 'error');
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const name = (nameInput.value || "").trim();
+        const rollNumber = (rollInput.value || "").trim();
+
+        if (!name || !rollNumber) {
+            showNotification("Name and roll number are required", "warning");
             return;
         }
-        
-        // Generate student ID
-        const studentId = `student_${rollNumber.padStart(3, '0')}_${name.replace(/ /g, '_')}`;
-        
+        if (capturedImages.length < totalImages) {
+            showNotification(`Capture ${totalImages} images before submitting`, "warning");
+            return;
+        }
+
+        const studentId = `student_${rollNumber.padStart(3, "0")}_${name.replace(/\s+/g, "_")}`;
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Registering...";
+
         try {
-            // Register student
-            const registerResponse = await fetch('/api/register-student', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ student_id: studentId, name, roll_number: rollNumber })
+            await apiRequest("/api/register-student", {
+                method: "POST",
+                body: JSON.stringify({
+                    student_id: studentId,
+                    name,
+                    roll_number: rollNumber,
+                }),
             });
-            
-            const registerData = await registerResponse.json();
-            
-            if (!registerData.success) {
-                showNotification(registerData.message, 'error');
-                return;
-            }
-            
-            // Save images
-            showNotification('Saving images...', 'info');
-            
-            const imagesResponse = await fetch('/api/save-face-images', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ student_id: studentId, images: capturedImages })
+
+            await apiRequest("/api/save-face-images", {
+                method: "POST",
+                body: JSON.stringify({
+                    student_id: studentId,
+                    images: capturedImages,
+                }),
             });
-            
-            const imagesData = await imagesResponse.json();
-            
-            if (!imagesData.success) {
-                showNotification(imagesData.message, 'error');
-                return;
-            }
-            
-            // Generate encodings
-            showNotification('Generating face encodings...', 'info');
-            
-            const encodingsResponse = await fetch('/api/generate-encodings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            const encodingsData = await encodingsResponse.json();
-            
-            if (encodingsData.success) {
-                showNotification('Student registered successfully!', 'success');
-                
-                // Reset form
-                registerForm.reset();
-                capturedImages = [];
-                document.getElementById('capturedImages').innerHTML = '';
-                captureBtn.textContent = 'Capture Images (0/20)';
-                document.getElementById('submitBtn').disabled = true;
-                
-                // Stop camera
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                    video.srcObject = null;
-                    startCameraBtn.disabled = false;
-                    stopCameraBtn.disabled = true;
-                    captureBtn.disabled = true;
-                }
-            } else {
-                showNotification(encodingsData.message, 'error');
-            }
-            
+
+            await apiRequest("/api/generate-encodings", { method: "POST", body: JSON.stringify({}) });
+
+            showNotification("Student registered and encodings refreshed", "success");
+
+            form.reset();
+            capturedImages = [];
+            capturedGrid.innerHTML = "";
+            setCaptureCount();
+            stopCamera();
         } catch (error) {
-            showNotification('Error: ' + error.message, 'error');
+            showNotification(error.message, "error");
+        } finally {
+            submitBtn.textContent = "Register Student";
+            submitBtn.disabled = capturedImages.length < totalImages;
         }
     });
+
+    window.addEventListener("beforeunload", stopCamera);
+    setCaptureCount();
 });

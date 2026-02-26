@@ -1,72 +1,71 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
-{% block title %}Register Student{% endblock %}
+{% block title %}Register Student | Smart Attendance{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="page-header">
-        <h1>👤 Register New Student</h1>
-        <p class="text-muted">Capture face data and register student</p>
+<section class="container" id="registerRoot" data-total-images="{{ images_per_student }}">
+    <div class="page-head">
+        <h1>Student Registration</h1>
+        <p>Capture high-quality face samples for the recognition system.</p>
     </div>
 
-    <div class="register-container">
-        <div class="card">
-            <div class="card-header">
-                <h3>Student Information</h3>
+    <div class="split-layout">
+        <section class="card">
+            <div class="card-head">
+                <h2>Registration Form</h2>
             </div>
             <div class="card-body">
-                <form id="registerForm">
-                    <div class="form-group">
-                        <label for="name">Student Name</label>
-                        <input type="text" id="name" name="name" class="form-control" required>
+                <form id="registerForm" class="form-grid">
+                    <label class="field">
+                        <span>Full Name</span>
+                        <input id="nameInput" name="name" type="text" class="input" placeholder="Enter student's full name" required>
+                    </label>
+                    <label class="field">
+                        <span>Roll Number / Student ID</span>
+                        <input id="rollInput" name="roll_number" type="text" class="input" placeholder="Example: 2301105473 or ROLL-2301-105-473" required>
+                        <small style="color: #6f8388; font-size: 0.85em; margin-top: 4px; display: block;">Auto-formatting supports spaces, dashes, and common prefixes.</small>
+                    </label>
+
+                    <div class="camera-panel">
+                        <video id="videoPreview" autoplay playsinline muted></video>
+                        <canvas id="captureCanvas" hidden></canvas>
+                        <div class="camera-badge" id="captureCount">0 / {{ images_per_student }}</div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="rollNumber">Roll Number</label>
-                        <input type="text" id="rollNumber" name="rollNumber" class="form-control" required>
+                    <div class="toolbar">
+                        <button type="button" id="startCameraBtn" class="btn btn-primary">Start Camera</button>
+                        <button type="button" id="stopCameraBtn" class="btn btn-secondary" disabled>Stop Camera</button>
+                        <button type="button" id="autoCaptureBtn" class="btn btn-secondary" disabled>Auto Capture</button>
+                        <button type="button" id="clearCaptureBtn" class="btn btn-ghost">Clear</button>
                     </div>
 
-                    <div class="form-group">
-                        <label>Face Capture</label>
-                        <div class="camera-container">
-                            <video id="video" autoplay></video>
-                            <canvas id="canvas" style="display:none;"></canvas>
-                        </div>
-                        <div class="camera-controls">
-                            <button type="button" id="startCamera" class="btn btn-primary">Start Camera</button>
-                            <button type="button" id="captureBtn" class="btn btn-success" disabled>
-                                Capture Images (0/20)
-                            </button>
-                            <button type="button" id="stopCamera" class="btn btn-danger" disabled>Stop Camera</button>
-                        </div>
-                    </div>
+                    <div id="capturedGrid" class="capture-grid"></div>
 
-                    <div class="captured-images" id="capturedImages"></div>
-
-                    <div class="form-actions">
-                        <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
-                            Register Student
-                        </button>
-                        <button type="reset" class="btn btn-secondary">Reset</button>
+                    <div class="toolbar">
+                        <button type="submit" id="submitBtn" class="btn btn-primary" disabled>Register Student</button>
                     </div>
                 </form>
             </div>
-        </div>
+        </section>
 
-        <div class="info-card">
-            <h4>📸 Instructions</h4>
-            <ul>
-                <li>Enter student name and roll number</li>
-                <li>Click "Start Camera" to activate webcam</li>
-                <li>Click "Capture Images" to take 20 photos</li>
-                <li>Move your head slightly between captures</li>
-                <li>Try different expressions</li>
-                <li>Ensure good lighting</li>
-                <li>Click "Register Student" when done</li>
-            </ul>
-        </div>
+        <aside class="card">
+            <div class="card-head">
+                <h2>Capture Guidelines</h2>
+            </div>
+            <div class="card-body">
+                <ul class="hint-list">
+                    <li>Keep camera at eye level.</li>
+                    <li>Capture slight pose variations (front, left, right).</li>
+                    <li>Use stable and even lighting.</li>
+                    <li>Keep one face in the frame.</li>
+                    <li>Wait for auto-capture to complete before submitting.</li>
+                    <li>Use a neutral expression.</li>
+                    <li>Avoid glasses glare or face coverings.</li>
+                </ul>
+            </div>
+        </aside>
     </div>
-</div>
+</section>
 {% endblock %}
 
 {% block extra_js %}

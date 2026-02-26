@@ -4,6 +4,8 @@ Calculates duration and determines attendance status based on entry/exit times
 """
 
 from datetime import datetime
+from typing import Optional, Tuple
+
 from . import config
 
 
@@ -25,22 +27,17 @@ class AttendanceManager:
         Returns:
             Duration in minutes
         """
-        try:
-            # Parse timestamps
-            entry_dt = datetime.strptime(entry_time, config.REPORT_DATETIME_FORMAT)
-            exit_dt = datetime.strptime(exit_time, config.REPORT_DATETIME_FORMAT)
-            
-            # Calculate difference
-            duration = exit_dt - entry_dt
-            
-            # Convert to minutes
-            duration_minutes = int(duration.total_seconds() / 60)
-            
-            return duration_minutes
-            
-        except Exception as e:
-            print(f"Error calculating duration: {e}")
-            return 0
+        # Parse timestamps
+        entry_dt = datetime.strptime(entry_time, config.REPORT_DATETIME_FORMAT)
+        exit_dt = datetime.strptime(exit_time, config.REPORT_DATETIME_FORMAT)
+
+        # Validate chronology to avoid negative attendance durations
+        if exit_dt < entry_dt:
+            raise ValueError("exit_time cannot be earlier than entry_time")
+
+        # Calculate difference and convert to minutes
+        duration = exit_dt - entry_dt
+        return int(duration.total_seconds() / 60)
     
     def determine_status(self, duration: int) -> str:
         """
@@ -57,8 +54,13 @@ class AttendanceManager:
         else:
             return "ABSENT"
     
-    def calculate_attendance(self, student_id: str, name: str, 
-                           entry_time: str, exit_time: str):
+    def calculate_attendance(
+        self,
+        student_id: str,
+        name: str,
+        entry_time: str,
+        exit_time: str,
+    ) -> Optional[Tuple[int, str, str]]:
         """
         Calculate complete attendance information
         
@@ -74,17 +76,15 @@ class AttendanceManager:
         try:
             # Calculate duration
             duration = self.calculate_duration(entry_time, exit_time)
-            
+
             # Determine status
             status = self.determine_status(duration)
-            
+
             # Extract date from entry time
             date = entry_time.split()[0]
-            
+
             return (duration, status, date)
-            
-        except Exception as e:
-            print(f"Error calculating attendance: {e}")
+        except (ValueError, TypeError):
             return None
     
     def format_duration(self, minutes: int) -> str:
