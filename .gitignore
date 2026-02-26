@@ -22,9 +22,14 @@ env/
 data/dataset/*/
 data/encodings/*.pkl
 data/database/*.db
+data/database/*.db-shm
+data/database/*.db-wal
 data/logs/*.txt
 data/reports/*.csv
 data/reports/*.txt
+
+# Environment variables
+.env
 
 # Models - YOLO model files (large binary files)
 models/*.pt
