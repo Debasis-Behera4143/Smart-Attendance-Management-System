@@ -31,8 +31,9 @@ data/reports/*.txt
 # Environment variables
 .env
 
-# Models - YOLO model files (large binary files)
-models/*.pt
+# Models - Allow yolov8n-face.pt (needed for deployment)
+# Note: yolov8n-face.pt is small enough (6MB) to commit
+# models/*.pt
 
 # Keep directory structure but ignore contents
 !data/dataset/.gitkeep

@@ -1,4 +1,3 @@
-# Streamlit Deployment Requirements
 streamlit>=1.30.0
 opencv-python-headless>=4.8.0
 face-recognition>=1.3.0
@@ -7,9 +6,3 @@ pillow>=10.0.0
 pandas>=2.0.0
 setuptools>=80,<81
 ultralytics>=8.3.0
-
-# For Windows local development (use dlib-bin)
-# dlib-bin
-
-# For Linux deployment (Streamlit Cloud)
-# dlib will be installed via packages.txt
