@@ -142,6 +142,11 @@ def _current_settings():
         config.DEFAULT_FAIR_MOTION_THRESHOLD,
         minimum=0.0,
     )
+    minimum_duration_minutes = _int_from_any(
+        settings.get("minimum_duration_minutes"),
+        config.MINIMUM_DURATION,
+        minimum=1,
+    )
 
     use_yolo_requested = _bool_from_any(
         settings.get("use_yolo"), config.ENABLE_YOLO_IF_AVAILABLE
@@ -154,6 +159,7 @@ def _current_settings():
         "run_interval_seconds": run_interval_seconds,
         "session_duration_minutes": session_duration_minutes,
         "fair_motion_threshold": fair_motion_threshold,
+        "minimum_duration_minutes": minimum_duration_minutes,
         "subject_options": config.SUBJECT_OPTIONS,
         "use_yolo": yolo_active,
         "use_yolo_requested": use_yolo_requested,
@@ -161,6 +167,16 @@ def _current_settings():
         "yolo_active": yolo_active,
         "recognition_interval_seconds": config.RECOGNITION_INTERVAL_SECONDS,
     }
+
+
+def _get_minimum_duration():
+    """Get current minimum duration from database settings."""
+    settings = db.get_system_settings()
+    return _int_from_any(
+        settings.get("minimum_duration_minutes"),
+        config.MINIMUM_DURATION,
+        minimum=1,
+    )
 
 
 def _dashboard_payload():
@@ -357,7 +373,6 @@ def exit_page():
     return render_template(
         "exit.html",
         settings=settings,
-        min_duration=config.MINIMUM_DURATION,
     )
 
 
@@ -422,6 +437,10 @@ def api_settings():
     if "fair_motion_threshold" in data:
         motion_threshold = _float_from_any(data.get("fair_motion_threshold"), minimum=0.0)
         db.set_setting("fair_motion_threshold", str(motion_threshold))
+
+    if "minimum_duration_minutes" in data:
+        min_duration = _int_from_any(data.get("minimum_duration_minutes"), minimum=1)
+        db.set_setting("minimum_duration_minutes", str(min_duration))
 
     if "use_yolo" in data:
         use_yolo = _bool_from_any(data.get("use_yolo"))
@@ -554,7 +573,7 @@ def recognize_exit():
     exit_result = db.mark_exit_and_save_attendance(
         student_id=student_id,
         name=name,
-        minimum_duration=attendance_mgr.minimum_duration,
+        minimum_duration=_get_minimum_duration(),
         subject=subject,
     )
     if not exit_result:
@@ -624,7 +643,7 @@ def mark_exit():
     exit_result = db.mark_exit_and_save_attendance(
         student_id=student_id,
         name=name,
-        minimum_duration=attendance_mgr.minimum_duration,
+        minimum_duration=_get_minimum_duration(),
         subject=subject,
     )
     if not exit_result:
@@ -674,7 +693,12 @@ def manual_attendance():
         raise ValidationError("exit_time cannot be earlier than entry_time")
 
     duration = int((exit_dt - entry_dt).total_seconds() / 60)
-    status = validate_status(status_override) if status_override else attendance_mgr.determine_status(duration)
+    # Use dynamic minimum duration from settings for status determination
+    if status_override:
+        status = validate_status(status_override)
+    else:
+        attendance_mgr.minimum_duration = _get_minimum_duration()
+        status = attendance_mgr.determine_status(duration)
     date = entry_dt.strftime(config.REPORT_DATE_FORMAT)
 
     saved = db.upsert_attendance(

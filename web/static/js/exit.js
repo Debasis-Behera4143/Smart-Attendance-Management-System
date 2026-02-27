@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const defaultRunInterval = Number(root.dataset.defaultRunInterval || 45);
     const defaultSessionDuration = Number(root.dataset.defaultSessionDuration || 90);
     const defaultMotionThreshold = Number(root.dataset.defaultMotionThreshold || 0.018);
+    const defaultMinimumDuration = Number(root.dataset.defaultMinimumDuration || 90);
 
     const video = document.getElementById("liveVideo");
     const canvas = document.getElementById("frameCanvas");
@@ -32,10 +33,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const runInterval = document.getElementById("runInterval");
     const sessionDuration = document.getElementById("sessionDuration");
     const motionThreshold = document.getElementById("motionThreshold");
+    const minimumDuration = document.getElementById("minimumDuration");
 
     runInterval.value = runInterval.value || String(defaultRunInterval);
     sessionDuration.value = sessionDuration.value || String(defaultSessionDuration);
     motionThreshold.value = motionThreshold.value || String(defaultMotionThreshold);
+    minimumDuration.value = minimumDuration.value || String(defaultMinimumDuration);
 
     const setStatus = (text) => {
         statusNode.textContent = text;
@@ -63,6 +66,60 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         monitorBtn.disabled = !stream;
         monitorBtn.textContent = monitorRunning() ? "Stop Monitor" : "Start Monitor";
+    };
+
+    const updateUIFeatureAvailability = () => {
+        const policy = cameraPolicy.value;
+        const mode = getSelectedMode();
+
+        // If "Always On" is selected, disable "Run Once" mode
+        if (policy === "always_on") {
+            Array.from(cameraRunMode.options).forEach(option => {
+                if (option.value === "once") {
+                    option.disabled = true;
+                }
+            });
+            // If current mode is "once", switch to "session"
+            if (mode === "once") {
+                cameraRunMode.value = "session";
+            }
+        } else {
+            // Re-enable all run mode options
+            Array.from(cameraRunMode.options).forEach(option => {
+                option.disabled = false;
+            });
+        }
+
+        // If "Run Once" is selected, disable "Always On" policy
+        if (mode === "once") {
+            Array.from(cameraPolicy.options).forEach(option => {
+                if (option.value === "always_on") {
+                    option.disabled = true;
+                }
+            });
+            // If current policy is "always_on", switch to "on_demand"
+            if (policy === "always_on") {
+                cameraPolicy.value = "on_demand";
+            }
+        } else {
+            // Re-enable all policy options
+            Array.from(cameraPolicy.options).forEach(option => {
+                option.disabled = false;
+            });
+        }
+
+        // Enable/disable features based on run mode
+        // Session Duration: only for "session" mode
+        sessionDuration.disabled = (mode !== "session");
+        sessionDuration.parentElement.style.opacity = (mode === "session") ? "1" : "0.5";
+
+        // Interval Check: only for "interval" mode
+        runInterval.disabled = (mode !== "interval");
+        runInterval.parentElement.style.opacity = (mode === "interval") ? "1" : "0.5";
+
+        // Fair Motion Threshold: only for "interval" mode
+        motionThreshold.disabled = (mode !== "interval");
+        motionThreshold.parentElement.style.opacity = (mode === "interval") ? "1" : "0.5";
     };
 
     const clearSessionTimer = () => {
@@ -177,6 +234,7 @@ document.addEventListener("DOMContentLoaded", () => {
             run_interval_seconds: Number(runInterval.value || defaultRunInterval),
             session_duration_minutes: Number(sessionDuration.value || defaultSessionDuration),
             fair_motion_threshold: Number(motionThreshold.value || defaultMotionThreshold),
+            minimum_duration_minutes: Number(minimumDuration.value || defaultMinimumDuration),
             use_yolo: useYolo.checked,
         };
 
@@ -321,6 +379,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const onSettingsChanged = async () => {
         try {
+            updateUIFeatureAvailability();
             await persistSettings();
             updateMonitorButton();
             showNotification("Teacher settings updated", "success");
@@ -345,8 +404,10 @@ document.addEventListener("DOMContentLoaded", () => {
     runInterval.addEventListener("change", onSettingsChanged);
     sessionDuration.addEventListener("change", onSettingsChanged);
     motionThreshold.addEventListener("change", onSettingsChanged);
+    minimumDuration.addEventListener("change", onSettingsChanged);
 
     window.addEventListener("beforeunload", stopCamera);
+    updateUIFeatureAvailability();
     updateMonitorButton();
     loadRecent();
 });

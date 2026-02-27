@@ -1,10 +1,21 @@
+# Flask web framework
 Flask>=3.0.0
+
+# Production servers
 gunicorn>=21.2.0
 waitress>=3.0.0
+
+# Core dependencies
 numpy>=1.24.0
 pillow>=10.0.0
 pandas>=2.0.0
 openpyxl>=3.1.0
+setuptools>=80,<81
+
+# Computer vision and face recognition
 opencv-python-headless>=4.8.0
 face-recognition>=1.3.0
 dlib>=19.24.0
+
+# Optional: YOLO for enhanced face detection
+ultralytics>=8.3.0
