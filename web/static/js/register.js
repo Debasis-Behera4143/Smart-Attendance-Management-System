@@ -1,3 +1,27 @@
+/**
+ * Show an extended notification with longer display time for detailed messages
+ * @param {string} message - The message to display
+ * @param {string} type - The notification type (info, success, error, warning)
+ */
+function showExtendedNotification(message, type = "info") {
+    const host = document.body;
+    const node = document.createElement("div");
+    node.className = `toast toast-${type}`;
+    node.style.whiteSpace = "pre-line"; // Allow line breaks in message
+    node.style.maxWidth = "500px"; // Wider for detailed messages
+    node.textContent = message;
+    host.appendChild(node);
+
+    requestAnimationFrame(() => node.classList.add("show"));
+
+    // Extended timeout for error messages with detailed guidance (8 seconds instead of 3.5)
+    const timeout = type === "error" ? 8000 : 3500;
+    setTimeout(() => {
+        node.classList.remove("show");
+        setTimeout(() => node.remove(), 400);
+    }, timeout);
+}
+
 let stream = null;
 let autoCaptureTimer = null;
 let capturedImages = [];
@@ -214,7 +238,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 }),
             });
 
-            await apiRequest("/api/save-face-images", {
+            // Update progress message
+            submitBtn.textContent = "Validating images...";
+            
+            const saveResult = await apiRequest("/api/save-face-images", {
                 method: "POST",
                 body: JSON.stringify({
                     student_id: studentId,
@@ -222,6 +249,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 }),
             });
 
+            // Show detailed validation results if available
+            if (saveResult.details) {
+                console.log("Face validation results:", saveResult.details);
+            }
+
+            // Update progress message
+            submitBtn.textContent = "Generating encodings...";
+            
             await apiRequest("/api/generate-encodings", { method: "POST", body: JSON.stringify({}) });
 
             showNotification("Student registered and encodings refreshed", "success");
@@ -232,7 +267,8 @@ document.addEventListener("DOMContentLoaded", () => {
             setCaptureCount();
             stopCamera();
         } catch (error) {
-            showNotification(error.message, "error");
+            // Show extended notification for detailed error messages (e.g., face detection failures)
+            showExtendedNotification(error.message, "error");
         } finally {
             submitBtn.textContent = "Register Student";
             submitBtn.disabled = capturedImages.length < totalImages;

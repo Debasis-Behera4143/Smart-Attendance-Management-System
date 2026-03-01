@@ -63,10 +63,12 @@ class FaceEncoder:
     def encode_faces(self):
         """
         Process all images and generate face encodings
+        Uses HOG with 2x upsample for best speed/quality balance
         """
         print("\n" + "="*60)
         print("GENERATING FACE ENCODINGS")
         print("="*60)
+        print(f"Detection Model: HOG (2x upsample for quality)")
         print(f"Encoding Model: {self.encoding_model}")
         print("-"*60)
         
@@ -87,14 +89,16 @@ class FaceEncoder:
                 # Load image
                 image = face_recognition.load_image_file(img_path)
                 
-                # Detect face locations
+                # Use HOG with 2x upsample for best speed/quality balance
+                # 2x upsample finds smaller faces and improves quality
+                # Much faster than CNN while maintaining good accuracy
                 face_locations = face_recognition.face_locations(
                     image, 
-                    model=config.FACE_DETECTION_MODEL,
-                    number_of_times_to_upsample=1 if config.FACE_DETECTION_MODEL == "hog" else 2
+                    model="hog",
+                    number_of_times_to_upsample=2  # Higher upsample for quality
                 )
                 
-                # Generate encodings
+                # Generate encodings using the "large" model for best accuracy
                 encodings = face_recognition.face_encodings(
                     image, 
                     face_locations,
@@ -130,6 +134,17 @@ class FaceEncoder:
         
         return processed > 0
     
+    def load_existing_encodings(self):
+        """Load existing encodings from file"""
+        if os.path.exists(self.encodings_file):
+            try:
+                with open(self.encodings_file, 'rb') as f:
+                    data = pickle.load(f)
+                    return data.get("encodings", []), data.get("names", [])
+            except Exception as e:
+                print(f"Warning: Could not load existing encodings: {e}")
+        return [], []
+    
     def save_encodings(self):
         """Save encodings to pickle file"""
         print("\n" + "="*60)
@@ -154,6 +169,139 @@ class FaceEncoder:
         except Exception as e:
             print(f"✗ Error saving encodings: {e}")
             return False
+    
+    def encode_single_student(self, student_id):
+        """Encode faces for a single new student and append to existing encodings.
+        This is MUCH faster than re-encoding all students.
+        
+        Args:
+            student_id: The student folder name (e.g., 'student_2301105473_Debasis_Behera')
+        
+        Returns:
+            tuple: (success, num_encoded) - success boolean and number of faces encoded
+        """
+        print("\n" + "="*60)
+        print(f"ENCODING NEW STUDENT: {student_id}")
+        print("="*60)
+        
+        # Load existing encodings
+        existing_encodings, existing_names = self.load_existing_encodings()
+        
+        # Check if student already has encodings
+        if student_id in existing_names:
+            print(f"⚠️  Student {student_id} already has encodings - skipping")
+            return True, 0
+        
+        student_folder = os.path.join(self.dataset_path, student_id)
+        
+        if not os.path.exists(student_folder):
+            print(f"✗ Student folder not found: {student_folder}")
+            return False, 0
+        
+        # Get all images for this student
+        image_files = [f for f in os.listdir(student_folder) 
+                      if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+        
+        if not image_files:
+            print(f"✗ No images found for student {student_id}")
+            return False, 0
+        
+        print(f"Found {len(image_files)} images for {student_id}")
+        print("-"*60)
+        
+        encoded_count = 0
+        
+        for img_file in image_files:
+            try:
+                img_path = os.path.join(student_folder, img_file)
+                image = face_recognition.load_image_file(img_path)
+                
+                # Use HOG with 2x upsample for quality
+                face_locations = face_recognition.face_locations(
+                    image, 
+                    model="hog",
+                    number_of_times_to_upsample=2
+                )
+                
+                encodings = face_recognition.face_encodings(
+                    image, 
+                    face_locations,
+                    model=self.encoding_model
+                )
+                
+                if len(encodings) > 0:
+                    # Use largest face if multiple detected
+                    if len(encodings) > 1:
+                        areas = [(bottom - top) * (right - left) 
+                                for top, right, bottom, left in face_locations]
+                        largest_idx = areas.index(max(areas))
+                        existing_encodings.append(encodings[largest_idx])
+                    else:
+                        existing_encodings.append(encodings[0])
+                    
+                    existing_names.append(student_id)
+                    encoded_count += 1
+                    print(f"  ✓ Encoded: {img_file}")
+                else:
+                    print(f"  ✗ No face in: {img_file}")
+                    
+            except Exception as e:
+                print(f"  ✗ Error processing {img_file}: {e}")
+        
+        print("-"*60)
+        print(f"Encoded {encoded_count}/{len(image_files)} images for {student_id}")
+        
+        if encoded_count > 0:
+            # Save updated encodings
+            self.known_encodings = existing_encodings
+            self.known_names = existing_names
+            success = self.save_encodings()
+            return success, encoded_count
+        
+        return False, 0
+    
+    def remove_student_encodings(self, student_id):
+        """Remove encodings for a deleted student without re-encoding others.
+        
+        Args:
+            student_id: The student ID to remove
+        
+        Returns:
+            bool: Success status
+        """
+        print("\n" + "="*60)
+        print(f"REMOVING ENCODINGS FOR: {student_id}")
+        print("="*60)
+        
+        # Load existing encodings
+        existing_encodings, existing_names = self.load_existing_encodings()
+        
+        if not existing_encodings:
+            print("No existing encodings found")
+            return True
+        
+        # Count how many to remove
+        count_before = len(existing_names)
+        
+        # Filter out the student's encodings
+        filtered_encodings = []
+        filtered_names = []
+        removed_count = 0
+        
+        for encoding, name in zip(existing_encodings, existing_names):
+            if name == student_id:
+                removed_count += 1
+            else:
+                filtered_encodings.append(encoding)
+                filtered_names.append(name)
+        
+        print(f"Removed {removed_count} encodings for {student_id}")
+        print(f"Remaining: {len(filtered_names)} encodings ({len(set(filtered_names))} students)")
+        
+        # Save updated encodings
+        self.known_encodings = filtered_encodings
+        self.known_names = filtered_names
+        return self.save_encodings()
     
     def run(self):
         """Main entry point for face encoding"""

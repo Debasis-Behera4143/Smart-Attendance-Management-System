@@ -35,13 +35,6 @@ data/reports/*.txt
 # Note: yolov8n-face.pt is small enough (6MB) to commit
 # models/*.pt
 
-# Keep directory structure but ignore contents
-!data/dataset/.gitkeep
-!data/encodings/.gitkeep
-!data/database/.gitkeep
-!data/logs/.gitkeep
-!data/reports/.gitkeep
-
 # OS specific
 .DS_Store
 Thumbs.db

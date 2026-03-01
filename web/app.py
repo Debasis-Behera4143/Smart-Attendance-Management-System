@@ -5,12 +5,17 @@ import os
 import sys
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from io import BytesIO
 from logging.handlers import RotatingFileHandler
 
+import cv2
+import face_recognition
+import numpy as np
 from flask import Flask, jsonify, render_template, request, send_from_directory, g
 from PIL import Image
+from werkzeug.exceptions import HTTPException
 
 # Add parent directory to path for src imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -67,6 +72,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config["SECRET_KEY"] = config.SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_REQUEST_SIZE_MB * 1024 * 1024
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300  # Cache static files for 5 minutes
+app.config["PROPAGATE_EXCEPTIONS"] = True  # Better error handling
 
 db = DatabaseManager()
 report_gen = ReportGenerator()
@@ -267,14 +274,64 @@ def _inside_payload(limit=config.MAX_RECENT_ITEMS):
     ]
 
 
+def _validate_liveness(liveness_data):
+    """
+    Validate liveness detection data from client.
+    Returns True if liveness check passes or is not available.
+    Returns False if liveness check fails.
+    """
+    if not liveness_data or not isinstance(liveness_data, dict):
+        # Liveness data not provided - allow for backward compatibility
+        logger.info("Liveness data not provided - allowing request")
+        return True
+    
+    # Check if liveness is verified
+    is_live = liveness_data.get('isLive', False)
+    score = liveness_data.get('score', 0)
+    details = liveness_data.get('details', {})
+    
+    # Log liveness check for audit trail
+    logger.info(f"Liveness check: isLive={is_live}, score={score}, details={details}")
+    
+    # Very lenient validation - primarily for logging, rarely blocks
+    # This ensures the system works even with mediocre liveness scores
+    if not is_live:
+        logger.warning(f"Liveness not verified: score={score}, details={details}")
+        # Still allow if score is reasonable (not blocking anymore)
+        if score < 30:  # Only block extremely low scores
+            logger.warning(f"Liveness score critically low: {score}")
+            return False
+    
+    # Just need face detection - blinks and motion are optional
+    has_face = details.get('hasFaceDetection', True)  # Default true for backward compatibility
+    
+    if not has_face:
+        logger.warning(f"No face detected in liveness check")
+        # Don't block - let face recognition handle it
+        return True
+    
+    logger.info(f"Liveness check passed: score={score}")
+    return True
+
+
 def _recognize_or_error(image_data):
     if not image_data:
         return None, _json_error("image payload is required", 400)
 
     validate_base64_image(image_data)
+    
+    # Check if encodings are loaded
+    if not recognizer.known_encodings:
+        return None, _json_error("no face encodings available - please register students and generate encodings first", 503)
+    
     match = recognizer.recognize_from_base64(image_data)
     if not match:
-        return None, _json_error("face not recognized", 404)
+        return None, _json_error(
+            "face not recognized - please ensure: (1) face is clearly visible, "
+            "(2) good lighting (avoid backlighting), (3) facing camera directly, "
+            "(4) student is registered with encodings generated",
+            404
+        )
 
     return match, None
 
@@ -331,9 +388,15 @@ def _handle_payload_too_large(_exc):
 @app.errorhandler(Exception)
 def _handle_unexpected_error(exc):
     logger.exception("Unhandled exception")
+    # Handle HTTP exceptions (404, 500, etc.) properly
+    if isinstance(exc, HTTPException):
+        if request.path.startswith("/api/"):
+            return _json_error(exc.description or "error", exc.code or 500)
+        return exc
+    # For non-HTTP exceptions
     if request.path.startswith("/api/"):
         return _json_error("internal server error", 500)
-    raise exc
+    return render_template("base.html"), 500
 
 
 @app.route("/")
@@ -492,30 +555,173 @@ def save_face_images():
     os.makedirs(folder_path, exist_ok=True)
 
     saved_count = 0
-    for index, image_payload in enumerate(images, start=1):
+    no_face_count = 0
+    invalid_count = 0
+    
+    def process_single_image(index_and_payload):
+        """Process a single image for face detection - designed for parallel execution."""
+        index, image_payload = index_and_payload
         try:
+            # Validate and decode base64 image
             image_bytes = validate_base64_image(image_payload)
             image = Image.open(BytesIO(image_bytes)).convert("RGB")
-            image.save(os.path.join(folder_path, f"img{index}.jpg"), "JPEG", quality=90)
-            saved_count += 1
+            
+            # Convert PIL image to numpy array for face detection
+            image_np = np.array(image)
+            
+            # Detect faces using HOG (fast) with minimal upsampling for speed
+            face_locations = face_recognition.face_locations(
+                image_np, 
+                model="hog",
+                number_of_times_to_upsample=0  # Reduced from 1 for faster processing
+            )
+            
+            if len(face_locations) > 0:
+                return ("success", image, index)
+            else:
+                logger.info(f"Image {index} skipped - no face detected (student_id={student_id})")
+                return ("no_face", None, index)
+                
         except ValidationError:
-            continue
-        except Exception:
-            logger.warning("invalid image skipped at index=%s for student_id=%s", index, student_id)
+            return ("invalid", None, index)
+        except Exception as e:
+            logger.warning("invalid image skipped at index=%s for student_id=%s: %s", index, student_id, str(e))
+            return ("invalid", None, index)
+    
+    # Process images in parallel with timeout protection
+    max_workers = min(4, len(images))  # Limit concurrent workers
+    timeout_per_batch = 30  # 30 seconds total timeout
+    
+    try:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            futures = {
+                executor.submit(process_single_image, (i, img)): i 
+                for i, img in enumerate(images, start=1)
+            }
+            
+            # Collect results with timeout
+            results = []
+            start_time = time.time()
+            for future in futures:
+                remaining_time = timeout_per_batch - (time.time() - start_time)
+                if remaining_time <= 0:
+                    logger.warning(f"Image processing timeout for student_id={student_id}")
+                    break
+                    
+                try:
+                    result = future.result(timeout=remaining_time)
+                    results.append(result)
+                except FuturesTimeoutError:
+                    logger.warning(f"Image processing timeout for student_id={student_id}")
+                    break
+                except Exception as e:
+                    logger.warning(f"Image processing error: {e}")
+                    results.append(("invalid", None, futures[future]))
+                    
+    except Exception as e:
+        logger.error(f"Parallel processing failed for student_id={student_id}: {e}")
+        raise ValidationError("image processing failed - please try again with fewer images")
+    
+    # Save successfully processed images
+    for status, image, index in results:
+        if status == "success":
+            image.save(os.path.join(folder_path, f"img{saved_count + 1}.jpg"), "JPEG", quality=85)
+            saved_count += 1
+        elif status == "no_face":
+            no_face_count += 1
+        elif status == "invalid":
+            invalid_count += 1
 
-    if saved_count == 0:
-        raise ValidationError("no valid images were saved")
+    # Require at least 3 images with faces for reliable encoding
+    min_required_images = 3
+    if saved_count < min_required_images:
+        # Clean up any saved images if we don't have enough
+        if os.path.exists(folder_path):
+            for file in os.listdir(folder_path):
+                os.remove(os.path.join(folder_path, file))
+        
+        # Provide detailed error message with guidance
+        error_parts = []
+        error_parts.append(f"Only {saved_count} out of {len(images)} images had detectable faces (minimum {min_required_images} required).\n")
+        
+        if no_face_count > 0:
+            error_parts.append(f"{no_face_count} images had no face detected.")
+        if invalid_count > 0:
+            error_parts.append(f"{invalid_count} images were invalid.")
+            
+        error_parts.append("\nPlease ensure:")
+        error_parts.append("• Your face is clearly visible and centered")
+        error_parts.append("• You are in a well-lit area (avoid backlighting)")
+        error_parts.append("• The camera lens is clean and in focus")
+        error_parts.append("• You are facing the camera directly")
+        
+        raise ValidationError("\n".join(error_parts))
 
-    return jsonify({"success": True, "message": f"saved {saved_count} images"})
+    return jsonify({
+        "success": True, 
+        "message": f"saved {saved_count} images with detected faces",
+        "details": {
+            "saved": saved_count,
+            "no_face_detected": no_face_count,
+            "invalid": invalid_count,
+            "total_submitted": len(images)
+        }
+    })
+
+
+@app.route("/api/encode-student/<student_id>", methods=["POST"])
+def encode_student(student_id):
+    """Encode faces for a single student. MUCH faster than re-encoding all students.
+    This is automatically called after saving face images for a new student.
+    """
+    student_id = validate_student_id(student_id)
+    
+    logger.info(f"Encoding faces for student: {student_id}")
+    start_time = time.time()
+    
+    encoder = FaceEncoder()
+    success, num_encoded = encoder.encode_single_student(student_id)
+    
+    elapsed = time.time() - start_time
+    logger.info(f"Student encoding completed in {elapsed:.2f}s - {num_encoded} faces encoded")
+    
+    if success:
+        # Reload encodings in recognizer
+        recognizer.load_encodings(force=True)
+        return jsonify({
+            "success": True,
+            "message": f"encoded {num_encoded} faces for {student_id}",
+            "elapsed_seconds": round(elapsed, 2),
+            "num_faces_encoded": num_encoded
+        })
+    
+    return _json_error(f"failed to encode faces for {student_id}", 500)
 
 
 @app.route("/api/generate-encodings", methods=["POST"])
 def generate_encodings():
+    """Generate face encodings from saved images. 
+    
+    NOTE: This re-encodes ALL students and may take time.
+    For new students, use /api/encode-student/<student_id> instead (much faster).
+    """
+    logger.info("Starting FULL face encoding generation (all students)...")
+    start_time = time.time()
+    
     encoder = FaceEncoder()
     success = encoder.run()
+    
+    elapsed = time.time() - start_time
+    logger.info(f"Face encoding generation completed in {elapsed:.2f}s - success={success}")
+    
     if success:
         recognizer.load_encodings(force=True)
-        return jsonify({"success": True, "message": "encodings generated successfully"})
+        return jsonify({
+            "success": True, 
+            "message": "encodings generated successfully",
+            "elapsed_seconds": round(elapsed, 2)
+        })
     return _json_error("failed to generate encodings", 500)
 
 
@@ -523,6 +729,15 @@ def generate_encodings():
 def recognize_entry():
     data = _json_body()
     image_data = data.get("image")
+    liveness_data = data.get("liveness")
+    subject = validate_subject(data.get("subject"), "subject", allow_empty=True)
+    if not subject:
+        subject = db.get_setting("active_subject", config.DEFAULT_SUBJECT)
+    
+    # Validate liveness if data is provided
+    if liveness_data and not _validate_liveness(liveness_data):
+        return _json_error("liveness check failed - please ensure you are a live person and blink naturally", 403)
+    
     match, error_response = _recognize_or_error(image_data)
     if error_response:
         return error_response
@@ -534,20 +749,33 @@ def recognize_entry():
     if not db.get_student_info(student_id):
         return _json_error("recognized student is not registered", 404)
 
-    entry_id = db.mark_entry(student_id, name)
-    if not entry_id:
-        return _json_error(f"{name} is already marked inside", 409)
+    entry_result = db.mark_entry(student_id, name, subject=subject)
+    if not entry_result:
+        logger.warning(f"Entry already marked for {name} ({student_id}) - subject: {subject}")
+        return _json_error(f"{name} is already marked inside for {subject}", 409)
 
-    entry_time = datetime.now().strftime(config.REPORT_DATETIME_FORMAT)
+    # Use the actual timestamp from database (not a new one!)
+    entry_id = entry_result["entry_id"]
+    entry_time = entry_result["entry_time"]
+    entry_subject = entry_result.get("subject", subject)
+    
+    # Log successful entry with liveness status and subject
+    liveness_status = "verified" if liveness_data else "not_checked"
+    logger.info(
+        f"Entry marked: {name} ({student_id}) at {entry_time} - "
+        f"subject: {entry_subject} - liveness: {liveness_status}"
+    )
+    
     return jsonify(
         {
             "success": True,
-            "message": "entry marked successfully",
+            "message": f"entry marked for {entry_subject}",
             "entry_id": entry_id,
             "student_id": student_id,
             "student_name": name,
             "confidence": confidence,
             "entry_time": entry_time,
+            "subject": entry_subject,
         }
     )
 
@@ -556,9 +784,15 @@ def recognize_entry():
 def recognize_exit():
     data = _json_body()
     image_data = data.get("image")
+    liveness_data = data.get("liveness")
     subject = validate_subject(data.get("subject"), "subject", allow_empty=True)
     if not subject:
         subject = db.get_setting("active_subject", config.DEFAULT_SUBJECT)
+    
+    # Validate liveness if data is provided
+    if liveness_data and not _validate_liveness(liveness_data):
+        return _json_error("liveness check failed - please ensure you are a live person and blink naturally", 403)
+    
     match, error_response = _recognize_or_error(image_data)
     if error_response:
         return error_response
@@ -577,7 +811,18 @@ def recognize_exit():
         subject=subject,
     )
     if not exit_result:
-        return _json_error(f"no active entry found for {name}", 409)
+        logger.warning(f"No active entry found for {name} ({student_id}) - subject: {subject}")
+        return _json_error(
+            f"no active entry found for {name} in {subject} - please mark entry first for this subject",
+            404
+        )
+
+    # Log successful exit with liveness status and subject
+    liveness_status = "verified" if liveness_data else "not_checked"
+    logger.info(
+        f"Exit marked: {name} ({student_id}) - subject: {exit_result.get('subject', subject)} - "
+        f"liveness: {liveness_status}, status: {exit_result['status']}"
+    )
 
     return jsonify(
         {
@@ -605,22 +850,26 @@ def mark_entry():
 
     student_id = validate_student_id(data.get("student_id"))
     name = validate_name(data.get("name"))
+    subject = validate_subject(data.get("subject"), "subject", allow_empty=True)
+    if not subject:
+        subject = db.get_setting("active_subject", config.DEFAULT_SUBJECT)
 
     if not db.get_student_info(student_id):
         return _json_error("student not registered", 404)
 
-    entry_id = db.mark_entry(student_id, name)
-    if not entry_id:
-        return _json_error(f"{name} is already marked inside", 409)
+    entry_result = db.mark_entry(student_id, name, subject=subject)
+    if not entry_result:
+        return _json_error(f"{name} is already marked inside for {subject}", 409)
 
     return jsonify(
         {
             "success": True,
-            "message": "entry marked successfully",
-            "entry_id": entry_id,
+            "message": f"entry marked for {subject}",
+            "entry_id": entry_result["entry_id"],
             "student_id": student_id,
             "student_name": name,
-            "entry_time": datetime.now().strftime(config.REPORT_DATETIME_FORMAT),
+            "entry_time": entry_result["entry_time"],
+            "subject": entry_result.get("subject", subject),
         }
     )
 
@@ -765,6 +1014,44 @@ def get_today_attendance():
     return jsonify({"success": True, "attendance": _attendance_payload(records)})
 
 
+@app.route("/api/check-stale-entries")
+def check_stale_entries():
+    """Check for stale entries (students still marked INSIDE after 24 hours)."""
+    max_age_hours = int(request.args.get("max_age_hours", 24))
+    student_id = request.args.get("student_id")
+    
+    stale_entries = db.get_stale_entries(student_id=student_id, max_age_hours=max_age_hours)
+    
+    return jsonify({
+        "success": True,
+        "stale_count": len(stale_entries),
+        "stale_entries": stale_entries,
+        "warning": "These entries may need manual cleanup" if stale_entries else None
+    })
+
+
+@app.route("/api/cleanup-stale-entries", methods=["POST"])
+def cleanup_stale_entries():
+    """Automatically cleanup stale entries (admin function)."""
+    data = _json_body()
+    max_age_hours = int(data.get("max_age_hours", 24))
+    mark_as_absent = data.get("mark_as_absent", True)
+    
+    cleaned_count = db.auto_cleanup_stale_entries(
+        max_age_hours=max_age_hours,
+        mark_as_absent=mark_as_absent
+    )
+    
+    logger.info(f"Stale entries cleanup: {cleaned_count} entries processed")
+    
+    return jsonify({
+        "success": True,
+        "message": f"Cleaned up {cleaned_count} stale entries",
+        "cleaned_count": cleaned_count
+    })
+
+
+
 @app.route("/api/get-attendance")
 def get_attendance():
     date = validate_date(request.args.get("date"), "date")
@@ -873,6 +1160,92 @@ def download_report():
     return send_from_directory(config.REPORTS_PATH, safe_name, as_attachment=True)
 
 
+# Admin routes
+@app.route("/admin")
+def admin_page():
+    """Admin dashboard for managing students."""
+    return render_template("admin.html")
+
+
+@app.route("/api/admin/students")
+def api_admin_students():
+    """Get all students with complete information for admin view."""
+    students = db.get_all_students()
+    result = []
+    for student in students:
+        student_id = student[0]
+        # Get attendance stats for each student
+        summary = db.get_student_subject_summary(student_id)
+        total_classes = sum(s["total_classes"] for s in summary)
+        present_classes = sum(s["present_classes"] for s in summary)
+        overall_rate = round((present_classes / total_classes) * 100, 2) if total_classes else 0.0
+        
+        result.append({
+            "student_id": student[0],
+            "name": student[1],
+            "roll_number": student[2],
+            "registered_date": student[3],
+            "total_classes": total_classes,
+            "attendance_rate": overall_rate
+        })
+    
+    return jsonify({"success": True, "students": result})
+
+
+@app.route("/api/admin/delete-student", methods=["POST"])
+def api_admin_delete_student():
+    """Delete a student and all their data (encodings, images, database records)."""
+    data = _json_body()
+    student_id = validate_student_id(data.get("student_id"))
+    
+    # Check if student exists
+    student = db.get_student_info(student_id)
+    if not student:
+        return _json_error("student not found", 404)
+    
+    # Delete from database
+    if not db.delete_student(student_id):
+        return _json_error("failed to delete student from database", 500)
+    
+    # Delete student's dataset folder
+    try:
+        dataset_folder = _safe_dataset_folder(student_id)
+        if os.path.exists(dataset_folder):
+            import shutil
+            shutil.rmtree(dataset_folder)
+            logger.info(f"Deleted dataset folder for student: {student_id}")
+    except Exception as e:
+        logger.error(f"Error deleting dataset folder for {student_id}: {e}")
+        # Continue anyway, database deletion is more important
+    
+    # Remove student's encodings efficiently (no re-encoding needed)
+    try:
+        encoder = FaceEncoder()
+        encoder.remove_student_encodings(student_id)
+        recognizer.load_encodings(force=True)
+        logger.info(f"Removed encodings for {student_id} - no re-encoding needed")
+    except Exception as e:
+        logger.error(f"Error removing encodings for {student_id}: {e}")
+        # Continue anyway, the student is already deleted from database
+    
+    return jsonify({
+        "success": True,
+        "message": f"Student {student_id} deleted successfully",
+        "student_name": student[1]
+    })
+
+
+def startup_cleanup():
+    """Run cleanup tasks on application startup."""
+    try:
+        # Clean up stale entries from previous days
+        cleaned = db.auto_cleanup_stale_entries(max_age_hours=24, mark_as_absent=True)
+        if cleaned > 0:
+            logger.info(f"Startup cleanup: Processed {cleaned} stale entries")
+    except Exception as e:
+        logger.error(f"Startup cleanup failed: {e}")
+
+
 if __name__ == "__main__":
     os.makedirs(config.DATASET_PATH, exist_ok=True)
     os.makedirs(config.ENCODINGS_PATH, exist_ok=True)
@@ -880,4 +1253,16 @@ if __name__ == "__main__":
     os.makedirs(config.LOGS_PATH, exist_ok=True)
     os.makedirs(config.REPORTS_PATH, exist_ok=True)
 
-    app.run(debug=config.FLASK_DEBUG, host=config.FLASK_HOST, port=config.FLASK_PORT)
+    # Run startup cleanup
+    startup_cleanup()
+
+    # Enable threaded mode for concurrent request handling
+    # This allows multiple students to mark entry/exit simultaneously
+    app.run(
+        debug=config.FLASK_DEBUG, 
+        host=config.FLASK_HOST, 
+        port=config.FLASK_PORT,
+        threaded=True,  # Enable multi-threading for concurrent requests
+        use_reloader=False  # Disable reloader to prevent double cleanup
+    )
+

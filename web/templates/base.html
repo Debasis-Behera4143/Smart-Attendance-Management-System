@@ -9,6 +9,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- MediaPipe for Liveness Detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -43,6 +46,9 @@
                 </a>
                 <a class="nav-link {% if request.path == '/reports' %}active{% endif %}" href="{{ url_for('reports_page') }}">
                     Reports
+                </a>
+                <a class="nav-link {% if request.path == '/admin' %}active{% endif %}" href="{{ url_for('admin_page') }}">
+                    Admin
                 </a>
             </nav>
         </div>

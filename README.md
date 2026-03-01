@@ -2,7 +2,37 @@
 
 ## 📌 Overview
 
-A **final-year level** face recognition-based attendance management system that tracks student entry and exit times, calculates duration, and automatically marks attendance status based on minimum required time.
+A production-ready face recognition-based attendance management system that tracks student entry and exit times, calculates duration, and automatically marks attendance status based on minimum required time.
+
+**🎥 CCTV-Ready**: Now supports IP cameras, RTSP streams, and existing CCTV infrastructure for enterprise deployment!
+
+## 📚 **Documentation**
+
+### **Quick Start**:
+👉 **[File Index](docs/FILE_INDEX.md)** - Quick reference for all files, one-line descriptions
+
+### **For Developers & Technical Review**:
+👉 **[Complete Technical Documentation](docs/TECHNICAL_DOCUMENTATION.md)** (1,251 lines)
+- File-by-file breakdown (17 Python modules)
+- All 15 libraries explained with usage examples
+- System architecture & data flow diagrams
+- Recognition pipeline (Hybrid HOG+CNN approach)
+- Common problems & solutions implemented
+- Performance metrics & benchmarks
+
+### **For Supervisor Presentation**:
+👉 **[Supervisor Presentation Guide](docs/SUPERVISOR_PRESENTATION_GUIDE.md)** (738 lines)
+- How to explain the project (30-second to 20-minute versions)
+- Demo scripts for each feature
+- Talking points and expected questions
+- Key accomplishments & innovation highlights
+- Technology stack summary in simple terms
+
+### **For Deployment**:
+👉 **[Docker Deployment Guide](docs/RENDER_DOCKER_DEPLOYMENT.md)**
+- Production deployment instructions
+- Docker containerization
+- Render.com cloud hosting
 
 ### ✨ Key Features
 
@@ -10,10 +40,12 @@ A **final-year level** face recognition-based attendance management system that 
 - 🔐 **Face Encoding**: High-accuracy facial recognition using deep learning
 - 📹 **Entry Camera System**: Automatic entry time logging
 - 📹 **Exit Camera System**: Automatic exit time and attendance marking
+- 🎥 **CCTV Integration**: Support for USB, RTSP, RTMP, HTTP, and IP cameras
 - ⏱️ **Duration Calculation**: Precise time tracking
 - ✅ **Smart Attendance**: Auto PRESENT/ABSENT based on duration
 - 📊 **Report Generation**: CSV and detailed text reports
 - 🗄️ **Database Management**: SQLite-based robust storage
+- 🔄 **Auto-Reconnect**: Network stream reconnection for stable CCTV operation
 
 ---
 
@@ -451,13 +483,13 @@ Deploy Flask app on Render, Railway, or similar platforms:
 
 ## �👥 Contributors
 
-- **Your Name** - Final Year Project
+- **Debasis Behera** - Lead Developer
 
 ---
 
 ## 📄 License
 
-This project is created for educational purposes as a final-year project.
+MIT License - Free to use, modify, and distribute.
 
 ---
 
@@ -472,10 +504,6 @@ This project is created for educational purposes as a final-year project.
 ## 📞 Support
 
 For any queries or issues, please refer to the documentation or raise an issue.
-
----
-
-**Made with ❤️ for Academic Excellence**
 
 ---
 

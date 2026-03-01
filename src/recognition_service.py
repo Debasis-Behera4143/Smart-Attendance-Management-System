@@ -117,32 +117,59 @@ class RecognitionService:
         if not self.load_encodings():
             return None
 
-        scale = config.RECOGNITION_FRAME_SCALE
-        if 0 < scale < 1:
-            small_frame = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
-        else:
-            small_frame = frame
-
-        rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-        face_locations = self._detect_faces(rgb_frame)
-        match = self._match_from_locations(rgb_frame, face_locations, scale)
-        if match:
-            return match
-
-        # If YOLO is active but failed to produce a stable recognition, retry with
-        # the native face_recognition detector as a safety fallback.
-        if self._yolo_active:
-            fallback_locations = face_recognition.face_locations(
-                rgb_frame, model=config.FACE_DETECTION_MODEL
-            )
-            match = self._match_from_locations(rgb_frame, fallback_locations, scale)
+        # Optimized scale search - try primary scale first, then fallback
+        # With hybrid HOG+CNN approach, we don't need many scales
+        primary_scale = config.RECOGNITION_FRAME_SCALE
+        scales = [primary_scale]
+        
+        # Add one fallback scale if primary scale is not 0.75
+        if primary_scale != 0.75:
+            scales.append(0.75)
+        
+        for scale in scales:
+            match = self._recognize_at_scale(frame, scale)
             if match:
                 return match
 
         return None
 
+    def _recognize_at_scale(self, frame: np.ndarray, scale: float) -> Optional[Dict]:
+        if 0 < scale < 1:
+            scaled_frame = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
+        else:
+            scaled_frame = frame
+
+        rgb_frame = cv2.cvtColor(scaled_frame, cv2.COLOR_BGR2RGB)
+        
+        # HYBRID APPROACH for speed + accuracy:
+        # 1. Try HOG first (fast) for clear/obvious matches
+        # 2. If no strong match, use CNN (accurate) for verification
+        
+        # First pass: HOG for speed (works well for frontal faces)
+        hog_locations = face_recognition.face_locations(rgb_frame, model="hog")
+        match = self._match_from_locations(rgb_frame, hog_locations, scale, strict=True)
+        if match and match.get("distance", 1.0) < 0.45:  # Strong match threshold
+            return match
+        
+        # Second pass: CNN for accuracy (if HOG didn't find strong match)
+        # Only run CNN if: no match found OR match was weak
+        cnn_locations = face_recognition.face_locations(rgb_frame, model="cnn")
+        match = self._match_from_locations(rgb_frame, cnn_locations, scale, strict=False)
+        if match:
+            return match
+
+        # Fallback to YOLO if enabled and available
+        if not match and self._yolo_active:
+            yolo_locations = self._detect_faces_with_yolo(rgb_frame)
+            if yolo_locations:
+                match = self._match_from_locations(rgb_frame, yolo_locations, scale, strict=False)
+                if match:
+                    return match
+
+        return None
+
     def _match_from_locations(
-        self, rgb_frame: np.ndarray, face_locations: List[FaceLocation], scale: float
+        self, rgb_frame: np.ndarray, face_locations: List[FaceLocation], scale: float, strict: bool = False
     ) -> Optional[Dict]:
         if not face_locations:
             return None
@@ -157,6 +184,40 @@ class RecognitionService:
         if not face_encodings:
             return None
 
+        # Try with primary tolerance first
+        for idx, (location, face_encoding) in enumerate(zip(face_locations, face_encodings)):
+            face_distances = face_recognition.face_distance(
+                self.known_encodings, face_encoding
+            )
+            if len(face_distances) == 0:
+                continue
+
+            best_idx = int(np.argmin(face_distances))
+            best_distance = float(face_distances[best_idx])
+            
+            # Primary tolerance check (strict mode uses tighter threshold)
+            threshold = config.FACE_RECOGNITION_TOLERANCE if not strict else config.FACE_RECOGNITION_TOLERANCE * 0.9
+            if best_distance <= threshold:
+                best_student_id = self.known_names[best_idx]
+                best_name = self._extract_name(best_student_id)
+                confidence = max(0.0, min(100.0, (1 - best_distance) * 100))
+                bbox = self._restore_bbox_to_original_scale(location, scale)
+                
+                return {
+                    "student_id": best_student_id,
+                    "name": best_name,
+                    "confidence": round(confidence, 2),
+                    "bbox": bbox,
+                    "distance": best_distance,
+                }
+        
+        # Skip relaxed tolerance in strict mode (HOG first-pass)
+        if strict:
+            return None
+        
+        # Try with relaxed tolerance as fallback (CNN second-pass only)
+        relaxed_tolerance = min(0.60, config.FACE_RECOGNITION_TOLERANCE + 0.10)
+        
         for location, face_encoding in zip(face_locations, face_encodings):
             face_distances = face_recognition.face_distance(
                 self.known_encodings, face_encoding
@@ -166,21 +227,21 @@ class RecognitionService:
 
             best_idx = int(np.argmin(face_distances))
             best_distance = float(face_distances[best_idx])
-            if best_distance > config.FACE_RECOGNITION_TOLERANCE:
-                continue
-
-            student_id = self.known_names[best_idx]
-            name = self._extract_name(student_id)
-            confidence = max(0.0, min(100.0, (1 - best_distance) * 100))
-            bbox = self._restore_bbox_to_original_scale(location, scale)
-
-            return {
-                "student_id": student_id,
-                "name": name,
-                "confidence": round(confidence, 2),
-                "bbox": bbox,
-                "distance": best_distance,
-            }
+            
+            # Relaxed tolerance check
+            if best_distance <= relaxed_tolerance and best_distance < 0.60:
+                student_id = self.known_names[best_idx]
+                name = self._extract_name(student_id)
+                confidence = max(0.0, min(100.0, (1 - best_distance) * 100))
+                bbox = self._restore_bbox_to_original_scale(location, scale)
+                
+                return {
+                    "student_id": student_id,
+                    "name": name,
+                    "confidence": round(confidence, 2),
+                    "bbox": bbox,
+                    "distance": best_distance,
+                }
 
         return None
 

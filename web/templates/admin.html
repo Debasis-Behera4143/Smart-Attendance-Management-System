@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+
+{% block title %}Admin - Student Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .admin-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+    }
+    
+    .admin-header {
+        margin-bottom: 2rem;
+        text-align: center;
+    }
+    
+    .admin-header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+        color: var(--color-primary, #2c3e50);
+    }
+    
+    .admin-header p {
+        color: #666;
+        font-size: 1.1rem;
+    }
+    
+    .warning-banner {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .warning-banner svg {
+        flex-shrink: 0;
+    }
+    
+    .students-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.07);
+        overflow: hidden;
+    }
+    
+    .card-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+    }
+    
+    .card-header h2 {
+        margin: 0;
+        font-size: 1.5rem;
+    }
+    
+    .search-bar {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .search-bar input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 1rem;
+        transition: border-color 0.3s;
+    }
+    
+    .search-bar input:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+    
+    .students-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .students-table thead {
+        background: #f8f9fa;
+    }
+    
+    .students-table th {
+        padding: 1rem 1.5rem;
+        text-align: left;
+        font-weight: 600;
+        color: #2c3e50;
+        border-bottom: 2px solid #e0e0e0;
+    }
+    
+    .students-table td {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .students-table tbody tr {
+        transition: background-color 0.2s;
+    }
+    
+    .students-table tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .delete-btn {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .delete-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(255, 107, 107, 0.3);
+    }
+    
+    .delete-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+    
+    .attendance-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+    
+    .attendance-excellent {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .attendance-good {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .attendance-average {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .attendance-poor {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .no-students {
+        padding: 3rem;
+        text-align: center;
+        color: #666;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 3rem;
+        color: #666;
+    }
+    
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        text-align: center;
+    }
+    
+    .stat-card h3 {
+        font-size: 2rem;
+        margin: 0.5rem 0;
+        color: #667eea;
+    }
+    
+    .stat-card p {
+        margin: 0;
+        color: #666;
+        font-weight: 600;
+    }
+    
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .modal.active {
+        display: flex;
+    }
+    
+    .modal-content {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        max-width: 500px;
+        width: 90%;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+    
+    .modal-header {
+        margin-bottom: 1rem;
+    }
+    
+    .modal-header h3 {
+        margin: 0;
+        color: #2c3e50;
+    }
+    
+    .modal-body {
+        margin-bottom: 1.5rem;
+        color: #666;
+    }
+    
+    .modal-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: flex-end;
+    }
+    
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .btn-cancel {
+        background: #e0e0e0;
+        color: #333;
+    }
+    
+    .btn-cancel:hover {
+        background: #d0d0d0;
+    }
+    
+    .btn-danger {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(255, 107, 107, 0.3);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-container">
+    <div class="admin-header">
+        <h1>Admin Panel</h1>
+        <p>Manage students and system data</p>
+    </div>
+    
+    <div class="warning-banner">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <div>
+            <strong>Warning:</strong> Deleting a student will permanently remove all their data including face images, encodings, and attendance records. This action cannot be undone!
+        </div>
+    </div>
+    
+    <div class="stats-row" id="statsRow">
+        <div class="stat-card">
+            <p>Total Students</p>
+            <h3 id="totalStudents">-</h3>
+        </div>
+        <div class="stat-card">
+            <p>Average Attendance</p>
+            <h3 id="avgAttendance">-</h3>
+        </div>
+    </div>
+    
+    <div class="students-card">
+        <div class="card-header">
+            <h2>Registered Students</h2>
+        </div>
+        
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="Search by name, ID, or roll number...">
+        </div>
+        
+        <div id="tableContainer">
+            <div class="loading">Loading students...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Confirm Deletion</h3>
+        </div>
+        <div class="modal-body">
+            <p>Are you sure you want to delete <strong id="deleteStudentName"></strong>?</p>
+            <p><strong>Student ID:</strong> <span id="deleteStudentId"></span></p>
+            <p style="color: #ff6b6b; font-weight: 600;">This will permanently delete:</p>
+            <ul style="color: #666;">
+                <li>All face images and encodings</li>
+                <li>All attendance records</li>
+                <li>Student registration data</li>
+            </ul>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-cancel" onclick="closeDeleteModal()">Cancel</button>
+            <button class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDelete()">Delete Student</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allStudents = [];
+let studentToDelete = null;
+
+async function loadStudents() {
+    try {
+        const response = await fetch('/api/admin/students');
+        const data = await response.json();
+        
+        if (data.success) {
+            allStudents = data.students;
+            renderStudents(allStudents);
+            updateStats(allStudents);
+        } else {
+            showError('Failed to load students');
+        }
+    } catch (error) {
+        console.error('Error loading students:', error);
+        showError('Error loading students');
+    }
+}
+
+function updateStats(students) {
+    const totalStudents = students.length;
+    const avgAttendance = students.length > 0
+        ? (students.reduce((sum, s) => sum + s.attendance_rate, 0) / students.length).toFixed(1)
+        : 0;
+    
+    document.getElementById('totalStudents').textContent = totalStudents;
+    document.getElementById('avgAttendance').textContent = avgAttendance + '%';
+}
+
+function renderStudents(students) {
+    const container = document.getElementById('tableContainer');
+    
+    if (students.length === 0) {
+        container.innerHTML = '<div class="no-students">No students registered yet.</div>';
+        return;
+    }
+    
+    const tableHTML = `
+        <table class="students-table">
+            <thead>
+                <tr>
+                    <th>Student ID</th>
+                    <th>Name</th>
+                    <th>Roll Number</th>
+                    <th>Registered Date</th>
+                    <th>Classes</th>
+                    <th>Attendance</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${students.map(student => `
+                    <tr>
+                        <td><code>${student.student_id}</code></td>
+                        <td><strong>${student.name}</strong></td>
+                        <td>${student.roll_number}</td>
+                        <td>${student.registered_date}</td>
+                        <td>${student.total_classes}</td>
+                        <td>${getAttendanceBadge(student.attendance_rate)}</td>
+                        <td>
+                            <button class="delete-btn" onclick="showDeleteModal('${student.student_id}', '${student.name}')">
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    
+    container.innerHTML = tableHTML;
+}
+
+function getAttendanceBadge(rate) {
+    let className = 'attendance-poor';
+    if (rate >= 90) className = 'attendance-excellent';
+    else if (rate >= 75) className = 'attendance-good';
+    else if (rate >= 60) className = 'attendance-average';
+    
+    return `<span class="attendance-badge ${className}">${rate.toFixed(1)}%</span>`;
+}
+
+function showDeleteModal(studentId, studentName) {
+    studentToDelete = studentId;
+    document.getElementById('deleteStudentName').textContent = studentName;
+    document.getElementById('deleteStudentId').textContent = studentId;
+    document.getElementById('deleteModal').classList.add('active');
+}
+
+function closeDeleteModal() {
+    studentToDelete = null;
+    document.getElementById('deleteModal').classList.remove('active');
+}
+
+async function confirmDelete() {
+    if (!studentToDelete) return;
+    
+    const confirmBtn = document.getElementById('confirmDeleteBtn');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Deleting...';
+    
+    try {
+        const response = await fetch('/api/admin/delete-student', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                student_id: studentToDelete
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showSuccess(`Student ${data.student_name} deleted successfully`);
+            closeDeleteModal();
+            loadStudents(); // Reload the list
+        } else {
+            showError(data.message || 'Failed to delete student');
+        }
+    } catch (error) {
+        console.error('Error deleting student:', error);
+        showError('Error deleting student');
+    } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Delete Student';
+    }
+}
+
+function showSuccess(message) {
+    alert(message);
+}
+
+function showError(message) {
+    alert(message);
+}
+
+// Search functionality
+document.addEventListener('DOMContentLoaded', () => {
+    loadStudents();
+    
+    const searchInput = document.getElementById('searchInput');
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        
+        if (!query) {
+            renderStudents(allStudents);
+            return;
+        }
+        
+        const filtered = allStudents.filter(student => 
+            student.student_id.toLowerCase().includes(query) ||
+            student.name.toLowerCase().includes(query) ||
+            student.roll_number.toLowerCase().includes(query)
+        );
+        
+        renderStudents(filtered);
+    });
+    
+    // Close modal when clicking outside
+    document.getElementById('deleteModal').addEventListener('click', (e) => {
+        if (e.target.id === 'deleteModal') {
+            closeDeleteModal();
+        }
+    });
+});
+</script>
+{% endblock %}

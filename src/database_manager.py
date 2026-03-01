@@ -3,7 +3,7 @@
 import logging
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from . import config
@@ -47,10 +47,16 @@ class DatabaseManager:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
     def get_connection(self):
-        conn = sqlite3.connect(self.db_path, timeout=config.DB_TIMEOUT)
-        conn.execute("PRAGMA foreign_keys = ON")
+        conn = sqlite3.connect(self.db_path, timeout=config.DB_TIMEOUT, check_same_thread=False)
+        # Enable WAL mode for concurrent read/write access
         conn.execute("PRAGMA journal_mode = WAL")
+        # Increase busy timeout for better concurrent write handling (30 seconds)
+        conn.execute("PRAGMA busy_timeout = 30000")
+        # Optimize for faster performance
         conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA cache_size = -64000")  # 64MB cache for faster queries
+        conn.execute("PRAGMA temp_store = MEMORY")  # Use memory for temp tables
+        conn.execute("PRAGMA foreign_keys = ON")
         return _SQLiteConnectionContext(conn)
 
     def create_tables(self):
@@ -144,8 +150,8 @@ class DatabaseManager:
         )
         cursor.execute(
             """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_entry_unique_inside_per_day
-            ON entry_log (student_id, date)
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_entry_unique_inside_per_subject
+            ON entry_log (student_id, date, subject)
             WHERE status = 'INSIDE'
             """
         )
@@ -202,16 +208,34 @@ class DatabaseManager:
             )
 
     def _ensure_attendance_schema(self, cursor):
+        # Define default subject for schema updates
+        default_subject = config.DEFAULT_SUBJECT.replace("'", "''")
+        
         cursor.execute("PRAGMA table_info(attendance)")
         columns = [row[1] for row in cursor.fetchall()]
         if "subject" not in columns:
-            default_subject = config.DEFAULT_SUBJECT.replace("'", "''")
             cursor.execute(
                 f"""
                 ALTER TABLE attendance
                 ADD COLUMN subject TEXT NOT NULL DEFAULT '{default_subject}'
                 """
             )
+        
+        # Add subject column to entry_log table if missing
+        cursor.execute("PRAGMA table_info(entry_log)")
+        entry_columns = [row[1] for row in cursor.fetchall()]
+        if "subject" not in entry_columns:
+            cursor.execute(
+                f"""
+                ALTER TABLE entry_log
+                ADD COLUMN subject TEXT NOT NULL DEFAULT '{default_subject}'
+                """
+            )
+            logger.info("Added 'subject' column to entry_log table")
+            
+            # Drop old unique constraint and create new one
+            cursor.execute("DROP INDEX IF EXISTS idx_entry_unique_inside_per_day")
+            logger.info("Dropped old unique constraint on entry_log")
 
     def register_student(self, student_id: str, name: str, roll_number: str) -> bool:
         try:
@@ -242,23 +266,156 @@ class DatabaseManager:
             )
             return cursor.fetchone()
 
-    def mark_entry(self, student_id: str, name: str) -> Optional[int]:
+    def get_stale_entries(self, student_id: Optional[str] = None, max_age_hours: int = 24) -> List[Dict]:
+        """
+        Find entries that are still marked 'INSIDE' but are older than max_age_hours.
+        These are likely forgotten exits or system errors.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cutoff_time = (datetime.now() - timedelta(hours=max_age_hours)).strftime(config.REPORT_DATETIME_FORMAT)
+            
+            if student_id:
+                cursor.execute(
+                    """
+                    SELECT id, student_id, name, entry_time, date 
+                    FROM entry_log
+                    WHERE student_id = ? AND status = 'INSIDE' AND entry_time < ?
+                    ORDER BY entry_time DESC
+                    """,
+                    (student_id, cutoff_time)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id, student_id, name, entry_time, date 
+                    FROM entry_log
+                    WHERE status = 'INSIDE' AND entry_time < ?
+                    ORDER BY entry_time DESC
+                    """,
+                    (cutoff_time,)
+                )
+            
+            results = []
+            for row in cursor.fetchall():
+                entry_time = datetime.strptime(row[3], config.REPORT_DATETIME_FORMAT)
+                age_hours = (datetime.now() - entry_time).total_seconds() / 3600
+                results.append({
+                    "id": row[0],
+                    "student_id": row[1],
+                    "name": row[2],
+                    "entry_time": row[3],
+                    "date": row[4],
+                    "age_hours": round(age_hours, 1)
+                })
+            return results
+
+    def auto_cleanup_stale_entries(self, max_age_hours: int = 24, mark_as_absent: bool = True) -> int:
+        """
+        Automatically cleanup stale entries (older than max_age_hours).
+        Returns count of entries cleaned.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cutoff_time = (datetime.now() - timedelta(hours=max_age_hours)).strftime(config.REPORT_DATETIME_FORMAT)
+            current_time = datetime.now().strftime(config.REPORT_DATETIME_FORMAT)
+            
+            # Find all stale entries
+            cursor.execute(
+                """
+                SELECT id, student_id, name, entry_time, date 
+                FROM entry_log
+                WHERE status = 'INSIDE' AND entry_time < ?
+                """,
+                (cutoff_time,)
+            )
+            stale_entries = cursor.fetchall()
+            
+            if not stale_entries:
+                return 0
+            
+            cleaned_count = 0
+            for entry_id, student_id, name, entry_time, entry_date in stale_entries:
+                # Mark entry as exited
+                cursor.execute(
+                    "UPDATE entry_log SET status = 'AUTO_CLEANUP' WHERE id = ?",
+                    (entry_id,)
+                )
+                
+                # Create exit record
+                cursor.execute(
+                    """
+                    INSERT INTO exit_log (student_id, name, entry_id, exit_time, date)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (student_id, name, entry_id, current_time, entry_date)
+                )
+                
+                # If mark_as_absent, create attendance record
+                if mark_as_absent:
+                    entry_dt = datetime.strptime(entry_time, config.REPORT_DATETIME_FORMAT)
+                    exit_dt = datetime.strptime(current_time, config.REPORT_DATETIME_FORMAT)
+                    duration = int((exit_dt - entry_dt).total_seconds() / 60)
+                    
+                    cursor.execute(
+                        """
+                        INSERT OR IGNORE INTO attendance (
+                            student_id, name, subject, entry_time, exit_time, 
+                            duration, status, date
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (student_id, name, "AUTO_CLEANUP", entry_time, current_time, 
+                         duration, "ABSENT", entry_date)
+                    )
+                
+                cleaned_count += 1
+                logger.info(f"Auto-cleanup: {name} ({student_id}) - entry from {entry_time}")
+            
+            conn.commit()
+            return cleaned_count
+
+    def mark_entry(self, student_id: str, name: str, subject: Optional[str] = None) -> Optional[Dict[str, object]]:
+        """Mark entry and return entry details including actual timestamp used."""
         current_date = datetime.now().strftime(config.REPORT_DATE_FORMAT)
         current_time = datetime.now().strftime(config.REPORT_DATETIME_FORMAT)
+        resolved_subject = (subject or "").strip() or config.DEFAULT_SUBJECT
 
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                
+                # Fast check for existing INSIDE entry before attempting insert
+                cursor.execute(
+                    """SELECT 1 FROM entry_log 
+                       WHERE student_id = ? AND date = ? AND subject = ? AND status = 'INSIDE' 
+                       LIMIT 1""",
+                    (student_id, current_date, resolved_subject)
+                )
+                if cursor.fetchone():
+                    logger.info(f"Entry already exists for {student_id} on {current_date} for {resolved_subject}")
+                    return None
+                
                 cursor.execute(
                     """
-                    INSERT INTO entry_log (student_id, name, entry_time, date, status)
-                    VALUES (?, ?, ?, ?, 'INSIDE')
+                    INSERT INTO entry_log (student_id, name, entry_time, date, status, subject)
+                    VALUES (?, ?, ?, ?, 'INSIDE', ?)
                     """,
-                    (student_id, name, current_time, current_date),
+                    (student_id, name, current_time, current_date, resolved_subject),
                 )
                 conn.commit()
-                return int(cursor.lastrowid)
-        except sqlite3.IntegrityError:
+                entry_id = int(cursor.lastrowid)
+                logger.info(f"Entry marked: {name} ({student_id}) - subject: {resolved_subject}")
+                return {
+                    "entry_id": entry_id,
+                    "entry_time": current_time,
+                    "date": current_date,
+                    "subject": resolved_subject
+                }
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"IntegrityError on entry for {student_id}: {e}")
+            return None
+        except sqlite3.OperationalError as e:
+            logger.error(f"Database locked during entry for {student_id}: {e}")
             return None
 
     def mark_exit(self, student_id: str, name: str) -> Optional[Tuple[int, str, str]]:
@@ -305,25 +462,47 @@ class DatabaseManager:
     ) -> Optional[Dict[str, object]]:
         """
         Atomically process exit and attendance creation in one transaction.
+        Handles cross-midnight entries (entry yesterday, exit today).
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
             current_date = datetime.now().strftime(config.REPORT_DATE_FORMAT)
             current_time = datetime.now().strftime(config.REPORT_DATETIME_FORMAT)
+            resolved_subject = (subject or "").strip() or config.DEFAULT_SUBJECT
 
+            # First try to find entry from TODAY for the specified subject
             cursor.execute(
                 """
-                SELECT id, entry_time FROM entry_log
-                WHERE student_id = ? AND date = ? AND status = 'INSIDE'
+                SELECT id, entry_time, date FROM entry_log
+                WHERE student_id = ? AND date = ? AND subject = ? AND status = 'INSIDE'
                 ORDER BY id DESC LIMIT 1
                 """,
-                (student_id, current_date),
+                (student_id, current_date, resolved_subject),
             )
             entry_record = cursor.fetchone()
+            
+            # If not found, check for YESTERDAY'S entry (cross-midnight case)
+            if not entry_record:
+                yesterday = (datetime.now() - timedelta(days=1)).strftime(config.REPORT_DATE_FORMAT)
+                cursor.execute(
+                    """
+                    SELECT id, entry_time, date FROM entry_log
+                    WHERE student_id = ? AND date = ? AND subject = ? AND status = 'INSIDE'
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    (student_id, yesterday, resolved_subject),
+                )
+                entry_record = cursor.fetchone()
+                
+                if entry_record:
+                    logger.warning(
+                        f"Cross-midnight exit detected: {name} ({student_id}) entered on {yesterday}, exiting on {current_date}"
+                    )
+            
             if not entry_record:
                 return None
 
-            entry_id, entry_time = entry_record
+            entry_id, entry_time, entry_date = entry_record
             entry_dt = datetime.strptime(entry_time, config.REPORT_DATETIME_FORMAT)
             exit_dt = datetime.strptime(current_time, config.REPORT_DATETIME_FORMAT)
             if exit_dt < entry_dt:
@@ -338,7 +517,6 @@ class DatabaseManager:
             duration = int((exit_dt - entry_dt).total_seconds() / 60)
             status = "PRESENT" if duration >= minimum_duration else "ABSENT"
             date = entry_time.split()[0]
-            resolved_subject = (subject or "").strip() or config.DEFAULT_SUBJECT
 
             cursor.execute(
                 "UPDATE entry_log SET status = 'EXITED' WHERE id = ?",
@@ -609,6 +787,31 @@ class DatabaseManager:
                 """
             )
             return cursor.fetchall()
+
+    def delete_student(self, student_id: str) -> bool:
+        """Delete a student and all associated data (attendance, entry, exit logs)."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Delete from attendance table
+                cursor.execute("DELETE FROM attendance WHERE student_id = ?", (student_id,))
+                
+                # Delete from exit_log table
+                cursor.execute("DELETE FROM exit_log WHERE student_id = ?", (student_id,))
+                
+                # Delete from entry_log table
+                cursor.execute("DELETE FROM entry_log WHERE student_id = ?", (student_id,))
+                
+                # Delete from students table
+                cursor.execute("DELETE FROM students WHERE student_id = ?", (student_id,))
+                
+                conn.commit()
+                logger.info(f"Successfully deleted student: {student_id}")
+                return True
+        except Exception as e:
+            logger.exception(f"Error deleting student {student_id}: {e}")
+            return False
 
     def get_recent_entries(self, limit: int = config.MAX_RECENT_ITEMS) -> List[Tuple]:
         with self.get_connection() as conn:

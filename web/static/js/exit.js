@@ -3,11 +3,20 @@ let monitorTimer = null;
 let sessionStopTimer = null;
 let isBusy = false;
 let lastGrayFrame = null;
+let livenessDetector = null;
+let livenessMonitorTimer = null;
+let lastManualScanTime = 0;
+const MANUAL_SCAN_COOLDOWN_MS = 3000; // 3 seconds cooldown between manual scans
 
 document.addEventListener("DOMContentLoaded", () => {
     const root = document.getElementById("exitRoot");
     if (!root) {
         return;
+    }
+
+    // Initialize liveness detector
+    if (typeof LivenessDetector !== 'undefined') {
+        livenessDetector = new LivenessDetector();
     }
 
     const baseScanInterval = Number(root.dataset.scanIntervalMs || 1500);
@@ -18,6 +27,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const video = document.getElementById("liveVideo");
     const canvas = document.getElementById("frameCanvas");
+    const cameraPanel = document.getElementById("cameraPanel");
+    const livenessBadge = document.getElementById("livenessBadge");
     const startBtn = document.getElementById("startCameraBtn");
     const stopBtn = document.getElementById("stopCameraBtn");
     const scanBtn = document.getElementById("scanOnceBtn");
@@ -34,6 +45,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const sessionDuration = document.getElementById("sessionDuration");
     const motionThreshold = document.getElementById("motionThreshold");
     const minimumDuration = document.getElementById("minimumDuration");
+    const useLivenessDetection = document.getElementById("useLivenessDetection");
+    const livenessStatusText = document.getElementById("livenessStatusText");
 
     runInterval.value = runInterval.value || String(defaultRunInterval);
     sessionDuration.value = sessionDuration.value || String(defaultSessionDuration);
@@ -140,6 +153,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const stopCamera = () => {
         stopMonitoring();
+        stopLivenessMonitoring();
         if (stream) {
             stream.getTracks().forEach((track) => track.stop());
         }
@@ -194,6 +208,143 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         lastGrayFrame = current;
         return size ? moved / size : 0;
+    };
+
+    // Liveness Detection Functions
+    const updateLivenessDetectorStatus = () => {
+        if (!livenessStatusText || !useLivenessDetection) {
+            return;
+        }
+
+        if (!livenessDetector) {
+            livenessStatusText.textContent = 'Not Available (Library Missing)';
+            livenessStatusText.style.color = 'var(--warning)';
+            useLivenessDetection.checked = false;
+            useLivenessDetection.disabled = true;
+        } else if (livenessDetector.isInitialized()) {
+            livenessStatusText.textContent = 'Available';
+            livenessStatusText.style.color = 'var(--success)';
+            // Restore user preference
+            const savedPref = localStorage.getItem('SMART_ATTENDANCE_USE_LIVENESS');
+            if (savedPref !== null) {
+                useLivenessDetection.checked = savedPref === 'true';
+            }
+        } else {
+            livenessStatusText.textContent = 'Initialization Failed';
+            livenessStatusText.style.color = 'var(--danger)';
+            useLivenessDetection.checked = false;
+            useLivenessDetection.disabled = true;
+        }
+    };
+
+    const isLivenessEnabled = () => {
+        return useLivenessDetection && useLivenessDetection.checked;
+    };
+
+    const startLivenessMonitoring = () => {
+        // Check if liveness is enabled by user
+        if (!isLivenessEnabled()) {
+            console.info('Liveness detection disabled by user');
+            return;
+        }
+
+        if (!livenessDetector || !livenessDetector.isInitialized()) {
+            console.info('Liveness detection not available');
+            return;
+        }
+
+        livenessDetector.reset();
+        
+        if (livenessBadge) {
+            livenessBadge.hidden = false;
+            livenessBadge.className = 'liveness-badge checking';
+            livenessBadge.textContent = 'Checking Liveness...';
+        }
+
+        if (cameraPanel) {
+            cameraPanel.classList.remove('liveness-verified', 'liveness-failed');
+            cameraPanel.classList.add('liveness-checking');
+        }
+
+        livenessMonitorTimer = setInterval(async () => {
+            if (!video || !stream) {
+                stopLivenessMonitoring();
+                return;
+            }
+            await livenessDetector.processFrame(video);
+            updateLivenessUI();
+        }, 100);
+    };
+
+    const stopLivenessMonitoring = () => {
+        if (livenessMonitorTimer) {
+            clearInterval(livenessMonitorTimer);
+            livenessMonitorTimer = null;
+        }
+        if (livenessBadge) {
+            livenessBadge.hidden = true;
+        }
+        if (cameraPanel) {
+            cameraPanel.classList.remove('liveness-checking', 'liveness-verified', 'liveness-failed');
+        }
+        if (livenessDetector) {
+            livenessDetector.reset();
+        }
+    };
+
+    const updateLivenessUI = () => {
+        if (!livenessDetector || !cameraPanel || !livenessBadge) {
+            return;
+        }
+        const livenessResult = livenessDetector.getLivenessScore();
+        if (livenessResult.isLive && livenessResult.score >= 60) {
+            cameraPanel.classList.remove('liveness-checking', 'liveness-failed');
+            cameraPanel.classList.add('liveness-verified');
+            livenessBadge.className = 'liveness-badge verified';
+            livenessBadge.textContent = 'Live Person Detected';
+        } else if (livenessResult.score > 0 && livenessResult.score < 60) {
+            cameraPanel.classList.remove('liveness-verified', 'liveness-failed');
+            cameraPanel.classList.add('liveness-checking');
+            livenessBadge.className = 'liveness-badge checking';
+            livenessBadge.textContent = `Verifying... (${livenessResult.score}%)`;
+        } else if (livenessResult.score === 0) {
+            cameraPanel.classList.remove('liveness-verified', 'liveness-failed');
+            cameraPanel.classList.add('liveness-checking');
+            livenessBadge.className = 'liveness-badge checking';
+            livenessBadge.textContent = 'Checking Liveness...';
+        }
+    };
+
+    const checkLivenessBeforeScan = () => {
+        // If liveness is disabled by user, skip check
+        if (!isLivenessEnabled()) {
+            return { allowed: true, reason: 'liveness_disabled' };
+        }
+
+        if (!livenessDetector || !livenessDetector.isInitialized()) {
+            return { allowed: true, reason: 'liveness_not_available' };
+        }
+        const livenessResult = livenessDetector.getLivenessScore();
+        if (!livenessResult.isLive) {
+            if (cameraPanel) {
+                cameraPanel.classList.remove('liveness-checking', 'liveness-verified');
+                cameraPanel.classList.add('liveness-failed');
+            }
+            if (livenessBadge) {
+                livenessBadge.className = 'liveness-badge failed';
+                livenessBadge.textContent = 'Liveness Check Failed';
+            }
+            const details = livenessResult.details;
+            let reason = 'Please ensure you are a live person. ';
+            if (!details.hasBlinks) {
+                reason += 'Blink your eyes naturally. ';
+            }
+            if (!details.hasMotion) {
+                reason += 'Move your head slightly. ';
+            }
+            return { allowed: false, reason };
+        }
+        return { allowed: true, livenessData: livenessResult };
     };
 
     const renderRecent = (records) => {
@@ -265,8 +416,28 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
     };
 
-    const scanOnce = async () => {
+    const scanOnce = async (isAutoScan = false) => {
         if (isBusy || !stream) {
+            return;
+        }
+
+        // Rate limiting for manual scans (not auto-monitoring)
+        if (!isAutoScan) {
+            const now = Date.now();
+            const timeSinceLastScan = now - lastManualScanTime;
+            if (timeSinceLastScan < MANUAL_SCAN_COOLDOWN_MS) {
+                const remainingSeconds = Math.ceil((MANUAL_SCAN_COOLDOWN_MS - timeSinceLastScan) / 1000);
+                showNotification(`Please wait ${remainingSeconds}s before scanning again`, "warning");
+                return;
+            }
+            lastManualScanTime = now;
+        }
+
+        // Check liveness before scanning
+        const livenessCheck = checkLivenessBeforeScan();
+        if (!livenessCheck.allowed) {
+            setStatus("Liveness Failed");
+            showNotification(livenessCheck.reason, "warning");
             return;
         }
 
@@ -275,8 +446,9 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        // Only apply motion check during auto-monitoring in interval mode, NOT manual scans
         const mode = getSelectedMode();
-        if (mode === "interval") {
+        if (mode === "interval" && isAutoScan) {
             const motionScore = computeMotionScore(capture.pixels);
             const requiredMotion = Math.max(0, Number(motionThreshold.value || defaultMotionThreshold));
             if (motionScore < requiredMotion) {
@@ -289,9 +461,16 @@ document.addEventListener("DOMContentLoaded", () => {
         setStatus("Scanning...");
 
         try {
+            const requestBody = {
+                image: capture.jpeg,
+                subject: activeSubject.value
+            };
+            if (livenessCheck.livenessData) {
+                requestBody.liveness = livenessCheck.livenessData;
+            }
             const data = await apiRequest("/api/recognize-exit", {
                 method: "POST",
-                body: JSON.stringify({ image: capture.jpeg, subject: activeSubject.value }),
+                body: JSON.stringify(requestBody),
             });
 
             showResult(data);
@@ -299,8 +478,18 @@ document.addEventListener("DOMContentLoaded", () => {
             showNotification(`${data.student_name} marked ${data.attendance_status}`, "success");
             await loadRecent();
         } catch (error) {
-            setStatus("No Match");
-            showNotification(error.message, "warning");
+            // Provide specific error messages instead of generic "No Match"
+            const message = error.message || "Recognition failed";
+            if (message.includes("no active entry")) {
+                setStatus("No Entry Found");
+            } else if (message.includes("not registered")) {
+                setStatus("Not Registered");
+            } else if (message.includes("no face") || message.includes("not recognized")) {
+                setStatus("No Face Detected");
+            } else {
+                setStatus("No Match");
+            }
+            showNotification(message, "warning");
         } finally {
             isBusy = false;
         }
@@ -315,7 +504,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         stopMonitoring();
         const intervalMs = getIntervalMsForMode();
-        monitorTimer = setInterval(scanOnce, intervalMs);
+        // Pass true to indicate auto-scan (apply motion check)
+        monitorTimer = setInterval(() => scanOnce(true), intervalMs);
 
         if (mode === "session") {
             const totalMinutes = Math.max(1, Number(sessionDuration.value || defaultSessionDuration));
@@ -342,6 +532,10 @@ document.addEventListener("DOMContentLoaded", () => {
             scanBtn.disabled = false;
             setStatus("Camera On");
             updateMonitorButton();
+            
+            // Start liveness monitoring
+            startLivenessMonitoring();
+            
             showNotification("Exit camera started", "success");
 
             if (cameraPolicy.value === "always_on" && getSelectedMode() !== "once") {
@@ -406,8 +600,31 @@ document.addEventListener("DOMContentLoaded", () => {
     motionThreshold.addEventListener("change", onSettingsChanged);
     minimumDuration.addEventListener("change", onSettingsChanged);
 
+    // Liveness detection toggle
+    if (useLivenessDetection) {
+        useLivenessDetection.addEventListener("change", () => {
+            const enabled = useLivenessDetection.checked;
+            localStorage.setItem('SMART_ATTENDANCE_USE_LIVENESS', enabled.toString());
+            
+            if (enabled && stream) {
+                startLivenessMonitoring();
+                showNotification("Liveness detection enabled", "info");
+            } else {
+                stopLivenessMonitoring();
+                showNotification("Liveness detection disabled", "info");
+            }
+        });
+    }
+
     window.addEventListener("beforeunload", stopCamera);
     updateUIFeatureAvailability();
     updateMonitorButton();
     loadRecent();
+    
+    // Update liveness detector status after all functions are defined
+    if (livenessDetector) {
+        setTimeout(updateLivenessDetectorStatus, 2000);
+    } else {
+        updateLivenessDetectorStatus();
+    }
 });

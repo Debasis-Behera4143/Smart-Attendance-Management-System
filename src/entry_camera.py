@@ -1,16 +1,19 @@
 """
 Entry Camera System
 Detects and recognizes students entering the premises and marks entry time
+Supports USB cameras, RTSP, RTMP, and IP camera streams (CCTV-ready)
 """
 
 import cv2
 import face_recognition
 import pickle
 import os
+import time
 from datetime import datetime
 import numpy as np
 from . import config
 from .database_manager import DatabaseManager
+from .camera_source import CameraSource
 
 
 class EntryCameraSystem:
@@ -19,7 +22,11 @@ class EntryCameraSystem:
     def __init__(self):
         """Initialize entry camera system"""
         self.encodings_file = config.ENCODINGS_FILE
-        self.camera_id = config.CAMERA_ENTRY_ID
+        # Use new camera source (supports CCTV)
+        self.camera_source = config.CAMERA_ENTRY_SOURCE
+        # Legacy fallback
+        if self.camera_source == "0":
+            self.camera_source = str(config.CAMERA_ENTRY_ID)
         self.db = DatabaseManager()
         self.known_encodings = []
         self.known_names = []
@@ -119,17 +126,20 @@ class EntryCameraSystem:
             print("\n✗ No encodings loaded. Cannot start entry system.")
             return
         
-        # Initialize camera
+        # Initialize camera using CameraSource abstraction (CCTV-ready)
         print("\nInitializing camera...")
-        cap = cv2.VideoCapture(self.camera_id)
+        camera = CameraSource(source=self.camera_source, name="Entry Camera")
         
-        if not cap.isOpened():
+        if not camera.open():
             print("✗ Error: Could not open camera!")
+            print("\nTroubleshooting:")
+            print("  - For USB camera: Set SMART_ATTENDANCE_CAMERA_ENTRY_SOURCE=0")
+            print("  - For RTSP: Set SMART_ATTENDANCE_CAMERA_ENTRY_SOURCE=rtsp://user:pass@ip:port/stream")
+            print("  - For IP Camera: Set SMART_ATTENDANCE_CAMERA_ENTRY_SOURCE=http://ip:port/video")
             return
         
-        # Set camera resolution
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.WINDOW_WIDTH)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.WINDOW_HEIGHT)
+        # Set resolution (works for USB cameras)
+        camera.set_resolution(config.WINDOW_WIDTH, config.WINDOW_HEIGHT)
         
         print("✓ Camera initialized successfully")
         print("\n" + "="*60)
@@ -144,13 +154,33 @@ class EntryCameraSystem:
         
         last_recognized = None
         recognition_cooldown = 0
+        reconnect_attempts = 0
         
         try:
             while True:
-                ret, frame = cap.read()
-                if not ret:
-                    print("✗ Error: Failed to capture frame!")
-                    break
+                ret, frame = camera.read()
+                if not ret or frame is None:
+                    print("⚠ Failed to read frame from camera")
+                    
+                    # Attempt reconnection for network streams (CCTV)
+                    if camera.source_type in ["RTSP", "RTMP", "HTTP", "IP_CAMERA"]:
+                        if reconnect_attempts < config.CAMERA_RECONNECT_ATTEMPTS:
+                            reconnect_attempts += 1
+                            print(f"⟳ Reconnection attempt {reconnect_attempts}/{config.CAMERA_RECONNECT_ATTEMPTS}...")
+                            time.sleep(config.CAMERA_RECONNECT_DELAY_SECONDS)
+                            if camera.reconnect():
+                                print("✓ Reconnected successfully")
+                                reconnect_attempts = 0
+                                continue
+                        else:
+                            print("✗ Maximum reconnection attempts reached")
+                            break
+                    else:
+                        print("✗ Error: Failed to capture frame!")
+                        break
+                
+                # Reset reconnect attempts on successful read
+                reconnect_attempts = 0
                 
                 # Reduce cooldown
                 if recognition_cooldown > 0:
@@ -171,25 +201,29 @@ class EntryCameraSystem:
                         else:
                             name = student_id
                         
-                        # Mark entry in database
-                        entry_id = self.db.mark_entry(student_id, name)
+                        # Get active subject from settings
+                        active_subject = self.db.get_setting("active_subject", config.DEFAULT_SUBJECT)
                         
-                        if entry_id:
+                        # Mark entry in database with subject
+                        entry_result = self.db.mark_entry(student_id, name, subject=active_subject)
+                        
+                        if entry_result:
                             current_time = datetime.now().strftime(config.REPORT_DATETIME_FORMAT)
                             print(f"\n{'='*60}")
                             print(f"✓ ENTRY MARKED")
                             print(f"{'='*60}")
                             print(f"  Student ID  : {student_id}")
                             print(f"  Name        : {name}")
+                            print(f"  Subject     : {active_subject}")
                             print(f"  Time        : {current_time}")
                             print(f"  Confidence  : {confidence:.2f}%")
-                            print(f"  Entry ID    : {entry_id}")
+                            print(f"  Entry ID    : {entry_result['entry_id']}")
                             print(f"{'='*60}\n")
                             
                             last_recognized = student_id
                             recognition_cooldown = 30  # ~1 second cooldown at 30fps
                         else:
-                            print(f"\n⚠ {name} already inside (Entry not marked)")
+                            print(f"\n⚠ {name} already marked inside for {active_subject} (duplicate entry prevented)")
                             recognition_cooldown = 15
                     
                     # Draw bounding box and label
@@ -233,7 +267,7 @@ class EntryCameraSystem:
         
         finally:
             # Cleanup
-            cap.release()
+            camera.close()
             cv2.destroyAllWindows()
             print("\n" + "="*60)
             print("ENTRY CAMERA SYSTEM CLOSED")

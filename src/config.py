@@ -70,20 +70,41 @@ MAX_ROLL_LENGTH = _env_int("SMART_ATTENDANCE_MAX_ROLL_LENGTH", 24)
 DEFAULT_PAGE_LIMIT = _env_int("SMART_ATTENDANCE_DEFAULT_PAGE_LIMIT", 100)
 MAX_PAGE_LIMIT = _env_int("SMART_ATTENDANCE_MAX_PAGE_LIMIT", 500)
 
-# Camera settings
+# Camera settings (CCTV-ready)
+# Supports multiple formats:
+# - USB Camera: "0", "1", "2" (camera device ID)
+# - RTSP Stream: "rtsp://username:password@ip:port/stream"
+# - RTMP Stream: "rtmp://ip:port/stream"
+# - HTTP/MJPEG: "http://ip:port/video"
+# - IP Camera: Direct IP camera stream URL
+CAMERA_ENTRY_SOURCE = os.getenv("SMART_ATTENDANCE_CAMERA_ENTRY_SOURCE", "0")
+CAMERA_EXIT_SOURCE = os.getenv("SMART_ATTENDANCE_CAMERA_EXIT_SOURCE", "0")
+
+# Legacy support - fallback to old numeric IDs if SOURCE not provided
 CAMERA_ENTRY_ID = _env_int("SMART_ATTENDANCE_CAMERA_ENTRY_ID", 0)
 CAMERA_EXIT_ID = _env_int("SMART_ATTENDANCE_CAMERA_EXIT_ID", 0)
+
 WINDOW_WIDTH = _env_int("SMART_ATTENDANCE_WINDOW_WIDTH", 640)
 WINDOW_HEIGHT = _env_int("SMART_ATTENDANCE_WINDOW_HEIGHT", 480)
 
+# Camera connection settings for CCTV/network streams
+CAMERA_RECONNECT_ATTEMPTS = _env_int("SMART_ATTENDANCE_CAMERA_RECONNECT_ATTEMPTS", 3)
+CAMERA_RECONNECT_DELAY_SECONDS = _env_int("SMART_ATTENDANCE_CAMERA_RECONNECT_DELAY", 5)
+CAMERA_STREAM_BUFFER_SIZE = _env_int("SMART_ATTENDANCE_CAMERA_BUFFER_SIZE", 1)
+
 # Recognition settings
-FACE_DETECTION_MODEL = os.getenv("SMART_ATTENDANCE_FACE_DETECTION_MODEL", "hog")
-FACE_RECOGNITION_TOLERANCE = _env_float("SMART_ATTENDANCE_FACE_TOLERANCE", 0.48)
+# HOG is faster but less accurate - CNN is more accurate but slower
+# Using CNN for better accuracy to prevent misidentification
+FACE_DETECTION_MODEL = os.getenv("SMART_ATTENDANCE_FACE_DETECTION_MODEL", "cnn")
+# Set tolerance to 0.5 for strict matching to avoid confusing different people
+# Lower = stricter (0.4-0.5), Higher = more lenient (0.6-0.65)
+FACE_RECOGNITION_TOLERANCE = _env_float("SMART_ATTENDANCE_FACE_TOLERANCE", 0.5)
 FACE_ENCODING_MODEL = os.getenv("SMART_ATTENDANCE_FACE_ENCODING_MODEL", "large")
-RECOGNITION_FRAME_SCALE = _env_float("SMART_ATTENDANCE_RECOGNITION_FRAME_SCALE", 0.5)
+# Using 0.75 scale for better face detail capture
+RECOGNITION_FRAME_SCALE = _env_float("SMART_ATTENDANCE_RECOGNITION_FRAME_SCALE", 0.75)
 RECOGNITION_INTERVAL_SECONDS = _env_float("SMART_ATTENDANCE_RECOGNITION_INTERVAL", 1.5)
 ENABLE_YOLO_IF_AVAILABLE = _env_bool("SMART_ATTENDANCE_ENABLE_YOLO", True)
-YOLO_CONFIDENCE_THRESHOLD = _env_float("SMART_ATTENDANCE_YOLO_CONFIDENCE", 0.35)
+YOLO_CONFIDENCE_THRESHOLD = _env_float("SMART_ATTENDANCE_YOLO_CONFIDENCE", 0.25)
 
 # Teacher camera policy
 CAMERA_POLICY_ALWAYS_ON = "always_on"
