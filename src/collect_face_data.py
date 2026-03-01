@@ -1,4 +1,5 @@
 """
+"""
 Face Data Collection Module
 Captures multiple face images per student with variations for better recognition
 """
@@ -9,6 +10,7 @@ import time
 from datetime import datetime
 from . import config
 from .database_manager import DatabaseManager
+from .encode_faces import FaceEncoder
 
 
 class FaceDataCollector:
@@ -196,7 +198,28 @@ class FaceDataCollector:
             
             if success:
                 print("\n✓ Face data collection successful!")
-                print("  Next step: Run 'encode_faces.py' to generate encodings")
+                print("\n" + "="*60)
+                print("ENCODING STUDENT FACES")
+                print("="*60)
+                
+                # Automatically encode only this student's faces
+                encoder = FaceEncoder()
+                encode_success, num_encoded = encoder.encode_single_student(student_id)
+                
+                if encode_success:
+                    print("\n✓ Student encoding complete!")
+                    print(f"  Encoded {num_encoded} face images")
+                    print("\n" + "="*60)
+                    print("✓ REGISTRATION COMPLETE!")
+                    print("="*60)
+                    print(f"  Student: {name}")
+                    print(f"  Roll Number: {roll_number}")
+                    print(f"  Student ID: {student_id}")
+                    print("  Status: Ready for attendance tracking")
+                    print("="*60)
+                else:
+                    print("\n⚠️  Warning: Face encoding failed!")
+                    print("  You may need to run encode_faces.py manually")
             else:
                 print("\n✗ Face data collection incomplete!")
             

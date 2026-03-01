@@ -187,10 +187,24 @@ class FaceEncoder:
         # Load existing encodings
         existing_encodings, existing_names = self.load_existing_encodings()
         
-        # Check if student already has encodings
+        # If student already has encodings, remove them first (for re-registration)
         if student_id in existing_names:
-            print(f"⚠️  Student {student_id} already has encodings - skipping")
-            return True, 0
+            print(f"⚠️  Student {student_id} already has encodings - removing old encodings...")
+            # Filter out old encodings for this student
+            filtered_encodings = []
+            filtered_names = []
+            removed_count = 0
+            
+            for encoding, name in zip(existing_encodings, existing_names):
+                if name == student_id:
+                    removed_count += 1
+                else:
+                    filtered_encodings.append(encoding)
+                    filtered_names.append(name)
+            
+            existing_encodings = filtered_encodings
+            existing_names = filtered_names
+            print(f"  Removed {removed_count} old encodings for {student_id}")
         
         student_folder = os.path.join(self.dataset_path, student_id)
         
