@@ -372,7 +372,7 @@ id | student_id | name | entry_time | exit_time | duration | status | date
 
 ---
 
-## 🎯 How to Explain in Viva
+## 🎯 How to Explain
 
 ### **1. Data Collection Process**
 
