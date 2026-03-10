@@ -258,7 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
             // Step 1: Validate images FIRST (before registering in database)
-            submitBtn.textContent = "Validating images...";
+            submitBtn.textContent = "Validating images... (may take up to 60s)";
             
             const saveResult = await apiRequest("/api/save-face-images", {
                 method: "POST",
@@ -266,11 +266,19 @@ document.addEventListener("DOMContentLoaded", () => {
                     student_id: studentId,
                     images: capturedImages,
                 }),
+                timeout: 90000, // 90 second timeout for image validation
             });
 
             // Show detailed validation results if available
             if (saveResult.details) {
                 console.log("Face validation results:", saveResult.details);
+                const { saved, no_face_detected, invalid } = saveResult.details;
+                if (no_face_detected > 0 || invalid > 0) {
+                    showNotification(
+                        `Processed: ${saved} valid, ${no_face_detected} no face, ${invalid} invalid`,
+                        "info"
+                    );
+                }
             }
 
             // Step 2: Register student in database (only if images passed validation)
@@ -283,13 +291,17 @@ document.addEventListener("DOMContentLoaded", () => {
                     name,
                     roll_number: rollNumber,
                 }),
+                timeout: 15000, // 15 second timeout
             });
 
             // Step 3: Generate face encodings
             submitBtn.textContent = "Generating encodings...";
             
             // Encode only this student's faces (much faster than re-encoding all students)
-            await apiRequest(`/api/encode-student/${studentId}`, { method: "POST" });
+            await apiRequest(`/api/encode-student/${studentId}`, { 
+                method: "POST",
+                timeout: 60000, // 60 second timeout for encoding
+            });
 
             showNotification("Student registered successfully", "success");
 
@@ -301,6 +313,9 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (error) {
             // Show extended notification for detailed error messages (e.g., face detection failures)
             showExtendedNotification(error.message, "error");
+            
+            // Log the error for debugging
+            console.error("Registration error:", error);
         } finally {
             submitBtn.textContent = "Register Student";
             submitBtn.disabled = capturedImages.length < totalImages;

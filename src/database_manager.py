@@ -473,7 +473,7 @@ class DatabaseManager:
             # First try to find entry from TODAY for the specified subject
             cursor.execute(
                 """
-                SELECT id, entry_time, date FROM entry_log
+                SELECT id, entry_time, date, subject FROM entry_log
                 WHERE student_id = ? AND date = ? AND subject = ? AND status = 'INSIDE'
                 ORDER BY id DESC LIMIT 1
                 """,
@@ -481,16 +481,32 @@ class DatabaseManager:
             )
             entry_record = cursor.fetchone()
             
-            # If not found, check for YESTERDAY'S entry (cross-midnight case)
+            # If not found with matching subject, try ANY subject for TODAY (manual exit fallback)
+            if not entry_record:
+                cursor.execute(
+                    """
+                    SELECT id, entry_time, date, subject FROM entry_log
+                    WHERE student_id = ? AND date = ? AND status = 'INSIDE'
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    (student_id, current_date),
+                )
+                entry_record = cursor.fetchone()
+                if entry_record:
+                    logger.info(
+                        f"Manual exit: Found entry with different subject for {name} ({student_id})"
+                    )
+            
+            # If still not found, check for YESTERDAY'S entry (cross-midnight case)
             if not entry_record:
                 yesterday = (datetime.now() - timedelta(days=1)).strftime(config.REPORT_DATE_FORMAT)
                 cursor.execute(
                     """
-                    SELECT id, entry_time, date FROM entry_log
-                    WHERE student_id = ? AND date = ? AND subject = ? AND status = 'INSIDE'
+                    SELECT id, entry_time, date, subject FROM entry_log
+                    WHERE student_id = ? AND date = ? AND status = 'INSIDE'
                     ORDER BY id DESC LIMIT 1
                     """,
-                    (student_id, yesterday, resolved_subject),
+                    (student_id, yesterday),
                 )
                 entry_record = cursor.fetchone()
                 
@@ -502,7 +518,11 @@ class DatabaseManager:
             if not entry_record:
                 return None
 
-            entry_id, entry_time, entry_date = entry_record
+            entry_id, entry_time, entry_date, entry_subject = entry_record
+            
+            # Use the subject from the entry record (not necessarily the one passed to this function)
+            resolved_subject = entry_subject
+            
             entry_dt = datetime.strptime(entry_time, config.REPORT_DATETIME_FORMAT)
             exit_dt = datetime.strptime(current_time, config.REPORT_DATETIME_FORMAT)
             if exit_dt < entry_dt:

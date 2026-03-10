@@ -290,6 +290,45 @@
             <strong>Warning:</strong> Deleting a student will permanently remove all their data including face images, encodings, and attendance records. This action cannot be undone!
         </div>
     </div>
+
+    <!-- Subject Filter -->
+    <div style="background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.07); overflow: hidden; margin-bottom: 1.5rem;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1rem 1.5rem;">
+            <h2 style="margin: 0; font-size: 1.25rem;">Filter by Subject</h2>
+        </div>
+        <div style="padding: 1.5rem;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 12px;">
+                <button onclick="filterBySubject('')" id="btn-all" class="subject-filter-btn" 
+                        style="padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 8px; 
+                               font-weight: 600; cursor: pointer; transition: all 0.3s; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: #667eea;">
+                    All Subjects
+                </button>
+                <button onclick="filterBySubject('Data Science')" id="btn-Data Science" class="subject-filter-btn" 
+                        style="padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 8px; background: white;
+                               color: #2c3e50; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                    Data Science
+                </button>
+                <button onclick="filterBySubject('Machine Learning')" id="btn-Machine Learning" class="subject-filter-btn" 
+                        style="padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 8px; background: white;
+                               color: #2c3e50; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                    Machine Learning
+                </button>
+                <button onclick="filterBySubject('Computer Networks')" id="btn-Computer Networks" class="subject-filter-btn" 
+                        style="padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 8px; background: white;
+                               color: #2c3e50; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                    Computer Networks
+                </button>
+                <button onclick="filterBySubject('Operating System')" id="btn-Operating System" class="subject-filter-btn" 
+                        style="padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 8px; background: white;
+                               color: #2c3e50; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                    Operating System
+                </button>
+            </div>
+            <p id="filterStatus" style="margin: 0; padding: 8px 12px; background: #f0f4ff; border-radius: 6px; color: #4c6ef5; font-size: 0.9rem;">
+                📌 Showing attendance for: <strong>All Subjects</strong>
+            </p>
+        </div>
+    </div>
     
     <div class="stats-row" id="statsRow">
         <div class="stat-card">
@@ -345,6 +384,7 @@
 <script>
 let allStudents = [];
 let studentToDelete = null;
+let currentSubjectFilter = ''; // Track current filter
 
 async function loadStudents() {
     try {
@@ -353,8 +393,7 @@ async function loadStudents() {
         
         if (data.success) {
             allStudents = data.students;
-            renderStudents(allStudents);
-            updateStats(allStudents);
+            applyCurrentFilter(); // Apply filter after loading
         } else {
             showError('Failed to load students');
         }
@@ -362,6 +401,63 @@ async function loadStudents() {
         console.error('Error loading students:', error);
         showError('Error loading students');
     }
+}
+
+function filterBySubject(subject) {
+    currentSubjectFilter = subject;
+    
+    // Update button styles
+    document.querySelectorAll('.subject-filter-btn').forEach(btn => {
+        btn.style.background = 'white';
+        btn.style.color = '#2c3e50';
+        btn.style.borderColor = '#e0e0e0';
+    });
+    
+    const activeBtn = document.getElementById(subject ? `btn-${subject}` : 'btn-all');
+    if (activeBtn) {
+        activeBtn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+        activeBtn.style.color = 'white';
+        activeBtn.style.borderColor = '#667eea';
+    }
+    
+    // Update filter status
+    document.getElementById('filterStatus').innerHTML = 
+        `📌 Showing attendance for: <strong>${subject || 'All Subjects'}</strong>`;
+    
+    applyCurrentFilter();
+}
+
+function applyCurrentFilter() {
+    let filteredStudents = allStudents;
+    
+    if (currentSubjectFilter) {
+        // Filter students by calculating their attendance for specific subject
+        filteredStudents = allStudents.map(student => {
+            // Get subject-specific stats from student data
+            const subjectStats = student.subject_breakdown 
+                ? student.subject_breakdown.find(s => s.subject === currentSubjectFilter)
+                : null;
+            
+            if (!subjectStats) {
+                return {
+                    ...student,
+                    total_classes: 0,
+                    attendance_rate: 0,
+                    filtered_subject: currentSubjectFilter
+                };
+            }
+            
+            return {
+                ...student,
+                total_classes: subjectStats.total_classes,
+                attendance_rate: subjectStats.attendance_rate,
+                filtered_subject: currentSubjectFilter
+            };
+        });
+    }
+    
+    renderStudents(filteredStudents);
+    updateStats(filteredStudents);
 }
 
 function updateStats(students) {

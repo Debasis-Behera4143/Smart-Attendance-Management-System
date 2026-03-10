@@ -93,7 +93,12 @@ rate_limiter = RateLimiter(
     max_requests=config.RATE_LIMIT_MAX_REQUESTS,
 )
 
-PUBLIC_API_PATHS = {"/api/health"}
+PUBLIC_API_PATHS = {
+    "/api/health",
+    "/api/register-student",
+    "/api/save-face-images",
+    "/api/encode-student"
+}
 
 
 def _bool_from_any(value, default=False):
@@ -313,7 +318,12 @@ def _before_request():
     if not request.path.startswith("/api/"):
         return None
 
-    if config.REQUIRE_API_KEY and request.path not in PUBLIC_API_PATHS:
+    # Check if path is public (exact match or starts with public path)
+    is_public = request.path in PUBLIC_API_PATHS or any(
+        request.path.startswith(path) for path in PUBLIC_API_PATHS if path.startswith("/api/")
+    )
+    
+    if config.REQUIRE_API_KEY and not is_public:
         provided = request.headers.get(config.API_KEY_HEADER, "").strip()
         if not provided or provided != config.API_KEY:
             return _json_error("unauthorized", 401)
@@ -586,7 +596,7 @@ def save_face_images():
         
         # Process images in parallel with timeout protection
         max_workers = min(4, len(images))  # Limit concurrent workers
-        timeout_per_batch = 30  # 30 seconds total timeout
+        timeout_per_batch = 60  # 60 seconds total timeout for better reliability
         
         try:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -1192,13 +1202,25 @@ def api_admin_students():
         present_classes = sum(s["present_classes"] for s in summary)
         overall_rate = round((present_classes / total_classes) * 100, 2) if total_classes else 0.0
         
+        # Include subject-wise breakdown for filtering
+        subject_breakdown = []
+        for subj_data in summary:
+            rate = round((subj_data["present_classes"] / subj_data["total_classes"]) * 100, 2) if subj_data["total_classes"] else 0.0
+            subject_breakdown.append({
+                "subject": subj_data["subject"],
+                "total_classes": subj_data["total_classes"],
+                "present_classes": subj_data["present_classes"],
+                "attendance_rate": rate
+            })
+        
         result.append({
             "student_id": student[0],
             "name": student[1],
             "roll_number": student[2],
             "registered_date": student[3],
             "total_classes": total_classes,
-            "attendance_rate": overall_rate
+            "attendance_rate": overall_rate,
+            "subject_breakdown": subject_breakdown  # Add this for filtering
         })
     
     return jsonify({"success": True, "students": result})

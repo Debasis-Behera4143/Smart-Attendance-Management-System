@@ -15,6 +15,10 @@
 
 async function apiRequest(url, options = {}) {
     const apiKey = window.localStorage.getItem("SMART_ATTENDANCE_API_KEY") || "";
+    
+    // Default timeout of 120 seconds for image processing endpoints
+    const timeout = options.timeout || 120000;
+    
     const config = {
         headers: {
             "Content-Type": "application/json",
@@ -24,20 +28,35 @@ async function apiRequest(url, options = {}) {
         ...options,
     };
 
-    const response = await fetch(url, config);
-    let payload = {};
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    config.signal = controller.signal;
+
     try {
-        payload = await response.json();
+        const response = await fetch(url, config);
+        clearTimeout(timeoutId);
+        
+        let payload = {};
+        try {
+            payload = await response.json();
+        } catch (error) {
+            payload = { success: false, message: "Invalid server response" };
+        }
+
+        if (!response.ok || payload.success === false) {
+            const message = payload.message || `Request failed (${response.status})`;
+            throw new Error(message);
+        }
+
+        return payload;
     } catch (error) {
-        payload = { success: false, message: "Invalid server response" };
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error('Request timeout - image processing took too long. Please try with better lighting or fewer images.');
+        }
+        throw error;
     }
-
-    if (!response.ok || payload.success === false) {
-        const message = payload.message || `Request failed (${response.status})`;
-        throw new Error(message);
-    }
-
-    return payload;
 }
 
 function formatDateTime(value) {
