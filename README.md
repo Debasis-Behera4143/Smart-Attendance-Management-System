@@ -18,6 +18,8 @@ The real-time facial recognition-based attendance management system built with F
 - [Team Structure](#team-structure)
 - [License](#license)
 
+
+
 ---
 
 ## 🎯 About the Project
