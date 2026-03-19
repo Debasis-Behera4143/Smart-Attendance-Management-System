@@ -100,12 +100,14 @@ class CCTVStreamProcessor:
         self.display_width = max(320, config.CCTV_DISPLAY_WIDTH)
         self.loop_sleep_seconds = max(0.0, config.CCTV_LOOP_SLEEP_SECONDS)
 
-        self._frame_counter = 0
+        self._frame_index = 0
         self._last_detections: List[FaceDetectionResult] = []
         self._stop_event = threading.Event()
         self._recent_marks: Dict[Tuple[str, str, str], datetime] = {}
         self._last_missing_encodings_log_at = 0.0
-        self._last_frame_warning_at = 0.0
+        self._last_frame_warning_ts = 0.0
+        self._settings_cache: Dict[str, Tuple[float, object]] = {}
+        self._settings_cache_ttl_seconds = 1.0
 
     def run_in_thread(self, stop_event: Optional[threading.Event] = None) -> threading.Thread:
         """Start processor in a background thread."""
@@ -141,29 +143,28 @@ class CCTVStreamProcessor:
 
         try:
             while not self._stop_event.is_set() and not (stop_event and stop_event.is_set()):
-                ok, frame = self.capture.get_latest_frame()
+                ok, frame = self.capture.get_latest_frame(copy=False)
                 if not ok or frame is None:
                     now = time.time()
-                    if now - self._last_frame_warning_at >= 5.0:
+                    if now - self._last_frame_warning_ts >= 5.0:
                         self.logger.warning(
                             "Waiting for frames from camera | role=%s | camera=%s",
                             self.camera_role,
                             self.camera_name,
                         )
-                        self._last_frame_warning_at = now
+                        self._last_frame_warning_ts = now
                     time.sleep(0.1)
                     continue
 
                 frame = self._resize_frame(frame)
-                self._frame_counter += 1
+                self._frame_index += 1
 
-                if self._frame_counter % self.frame_process_interval == 0:
+                if self._frame_index % self.frame_process_interval == 0:
                     self._last_detections = self._process_frame(frame)
 
-                annotated = frame.copy()
-                self._draw_detections(annotated, self._last_detections)
-
                 if self.show_live_display:
+                    annotated = frame.copy()
+                    self._draw_detections(annotated, self._last_detections)
                     try:
                         cv2.imshow(self.window_name, annotated)
                         key = cv2.waitKey(1) & 0xFF
@@ -377,14 +378,42 @@ class CCTVStreamProcessor:
     def _get_active_subject(self) -> str:
         if self.subject_override:
             return self.subject_override
-        return self.db.get_setting("active_subject", config.DEFAULT_SUBJECT) or config.DEFAULT_SUBJECT
+        return str(
+            self._get_cached_setting("active_subject", config.DEFAULT_SUBJECT)
+            or config.DEFAULT_SUBJECT
+        )
 
     def _get_minimum_duration(self) -> int:
-        raw_value = self.db.get_setting("minimum_duration_minutes", str(config.MINIMUM_DURATION))
+        raw_value = self._get_cached_setting(
+            "minimum_duration_minutes",
+            str(config.MINIMUM_DURATION),
+            ttl_seconds=3.0,
+        )
         try:
             return max(1, int(raw_value or config.MINIMUM_DURATION))
         except (TypeError, ValueError):
             return config.MINIMUM_DURATION
+
+    def _get_cached_setting(
+        self,
+        key: str,
+        default: object,
+        ttl_seconds: Optional[float] = None,
+    ) -> object:
+        ttl = self._settings_cache_ttl_seconds if ttl_seconds is None else max(0.0, ttl_seconds)
+        now = time.monotonic()
+        cached = self._settings_cache.get(key)
+        if cached and (now - cached[0]) < ttl:
+            return cached[1]
+
+        try:
+            value = self.db.get_setting(key, default)
+        except Exception:
+            self.logger.exception("Failed reading setting | key=%s", key)
+            value = default
+
+        self._settings_cache[key] = (now, value)
+        return value
 
     def _cache_key(self, student_id: str, subject: str) -> Tuple[str, str, str]:
         return self.camera_role, student_id, subject
