@@ -608,7 +608,7 @@ class CCTVStreamProcessor:
 
 
 
-        subject = self._get_active_subject()
+        active_subject = self._get_active_subject()
 
         now_dt = datetime.now()
 
@@ -618,9 +618,9 @@ class CCTVStreamProcessor:
 
 
 
-        if self._is_duplicate_recent(student_id, subject, now_dt):
+        if self._is_duplicate_recent(student_id, active_subject, now_dt):
 
-            return self._remember_and_status(student_id, subject, now_dt, "Duplicate blocked")
+            return self._remember_and_status(student_id, active_subject, now_dt, "Duplicate blocked")
 
 
 
@@ -646,17 +646,17 @@ class CCTVStreamProcessor:
 
         if self.camera_role == "entry":
 
-            entry_result = self.db.mark_entry(student_id, name, subject=subject)
+            entry_result = self.db.mark_entry(student_id, name, subject=active_subject)
 
             if not entry_result:
 
-                return self._remember_and_status(student_id, subject, now_dt, "Already inside")
+                return self._remember_and_status(student_id, active_subject, now_dt, "Already inside")
 
 
 
             mark_time = str(entry_result["entry_time"])
 
-            self._remember_mark(student_id, subject, now_dt)
+            self._remember_mark(student_id, active_subject, now_dt)
 
             self._log_attendance_event(
 
@@ -668,7 +668,7 @@ class CCTVStreamProcessor:
 
                 student_id=student_id,
 
-                subject=subject,
+                subject=active_subject,
 
                 mark_time=mark_time,
 
@@ -690,17 +690,17 @@ class CCTVStreamProcessor:
 
             minimum_duration=minimum_duration,
 
-            subject=subject,
+            subject=active_subject,
 
         )
 
         if not exit_result:
 
-            return self._remember_and_status(student_id, subject, now_dt, "No active entry")
+            return self._remember_and_status(student_id, active_subject, now_dt, "No active entry")
 
 
 
-        resolved_subject = str(exit_result.get("subject", subject))
+        resolved_subject = str(exit_result.get("subject", active_subject))
 
         mark_time = str(exit_result.get("exit_time", now_dt.strftime(config.REPORT_DATETIME_FORMAT)))
 
