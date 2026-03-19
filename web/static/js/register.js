@@ -1,20 +1,16 @@
-/**
- * Show an extended notification with longer display time for detailed messages
- * @param {string} message - The message to display
- * @param {string} type - The notification type (info, success, error, warning)
- */
+
 function showExtendedNotification(message, type = "info") {
     const host = document.body;
     const node = document.createElement("div");
     node.className = `toast toast-${type}`;
-    node.style.whiteSpace = "pre-line"; // Allow line breaks in message
-    node.style.maxWidth = "500px"; // Wider for detailed messages
+    node.style.whiteSpace = "pre-line";
+    node.style.maxWidth = "500px";
     node.textContent = message;
     host.appendChild(node);
 
     requestAnimationFrame(() => node.classList.add("show"));
 
-    // Extended timeout for error messages with detailed guidance (8 seconds instead of 3.5)
+
     const timeout = type === "error" ? 8000 : 3500;
     setTimeout(() => {
         node.classList.remove("show");
@@ -119,15 +115,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 audio: false,
             });
             video.srcObject = stream;
-            
-            // Wait for video to be ready before enabling capture
+
+
             await new Promise((resolve) => {
                 video.onloadedmetadata = () => {
                     video.play();
                     resolve();
                 };
             });
-            
+
             startBtn.disabled = true;
             stopBtn.disabled = false;
             autoBtn.disabled = false;
@@ -157,7 +153,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        // Verify video is ready before starting
+
         if (!video.videoWidth || !video.videoHeight) {
             showNotification("Camera is loading - please wait and try again", "warning");
             return;
@@ -166,21 +162,21 @@ document.addEventListener("DOMContentLoaded", () => {
         captureState.running = true;
         autoBtn.textContent = "Pause Capture";
         showNotification("Auto-capture starting - hold steady!", "success");
-        
-        // Brief delay before first capture to let user get ready
+
+
         setTimeout(() => {
-            if (!captureState.running) return; // User may have paused
-            
+            if (!captureState.running) return;
+
             captureFrame();
-            
-            // Then continue at slower intervals for better quality
+
+
             autoCaptureTimer = setInterval(() => {
                 captureFrame();
                 if (capturedImages.length >= totalImages) {
                     stopAutoCapture();
                 }
-            }, 600); // Slower interval = better quality, less motion blur
-        }, 800); // Initial delay to let user steady themselves
+            }, 600);
+        }, 800);
     });
 
     clearBtn.addEventListener("click", () => {
@@ -190,7 +186,7 @@ document.addEventListener("DOMContentLoaded", () => {
         stopAutoCapture();
     });
 
-    // Auto-format roll number as user types (matches backend logic)
+
     rollInput.addEventListener("input", () => {
         const original = rollInput.value;
         if (!original) {
@@ -198,14 +194,14 @@ document.addEventListener("DOMContentLoaded", () => {
             rollInput.title = '';
             return;
         }
-        
-        // Simulate backend formatting logic
+
+
         let cleaned = original.toUpperCase();
-        
-        // Remove separators first
+
+
         cleaned = cleaned.replace(/[\s\-_/.,:\(\)\[\]]+/g, '');
-        
-        // Remove common prefixes (same order as backend)
+
+
         const prefixes = [
             'ROLLNUMBER', 'ROLLNO',
             'STUDENTNUMBER', 'STUDENTID', 'STUDENTNO', 'STUDENT',
@@ -214,18 +210,18 @@ document.addEventListener("DOMContentLoaded", () => {
             'IDNUMBER', 'IDNO', 'ID',
             'ROLL', 'NUMBER', 'NO',
         ];
-        
+
         for (const prefix of prefixes) {
             if (cleaned.startsWith(prefix)) {
                 cleaned = cleaned.substring(prefix.length);
                 break;
             }
         }
-        
-        // Remove any remaining non-alphanumeric
+
+
         cleaned = cleaned.replace(/[^A-Z0-9]/g, '');
-        
-        // Show helpful hint if formatting occurred
+
+
         if (cleaned !== original.toUpperCase() && cleaned.length > 0) {
             rollInput.style.borderColor = '#4CAF50';
             rollInput.style.borderWidth = '2px';
@@ -257,20 +253,20 @@ document.addEventListener("DOMContentLoaded", () => {
         submitBtn.textContent = "Registering...";
 
         try {
-            // Step 1: Validate images FIRST (before registering in database)
+
             submitBtn.textContent = "Validating images... (may take up to 90s)";
-            
+
             const saveResult = await apiRequest("/api/save-face-images", {
                 method: "POST",
                 body: JSON.stringify({
                     student_id: studentId,
                     images: capturedImages,
                 }),
-                timeout: 120000, // 120 second timeout for image validation (backend has 75s limit)
-                retry: false  // Don't retry POST requests to avoid duplicates
+                timeout: 120000,
+                retry: false
             });
 
-            // Show detailed validation results if available
+
             if (saveResult.details) {
                 console.log("Face validation results:", saveResult.details);
                 const { saved, no_face_detected, invalid } = saveResult.details;
@@ -282,9 +278,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
 
-            // Step 2: Register student in database (only if images passed validation)
+
             submitBtn.textContent = "Registering student...";
-            
+
             await apiRequest("/api/register-student", {
                 method: "POST",
                 body: JSON.stringify({
@@ -292,18 +288,18 @@ document.addEventListener("DOMContentLoaded", () => {
                     name,
                     roll_number: rollNumber,
                 }),
-                timeout: 15000, // 15 second timeout
-                retry: false  // Don't retry to avoid duplicate registrations
+                timeout: 15000,
+                retry: false
             });
 
-            // Step 3: Generate face encodings
+
             submitBtn.textContent = "Generating encodings...";
-            
-            // Encode only this student's faces (much faster than re-encoding all students)
-            await apiRequest(`/api/encode-student/${studentId}`, { 
+
+
+            await apiRequest(`/api/encode-student/${studentId}`, {
                 method: "POST",
-                timeout: 60000, // 60 second timeout for encoding
-                retry: false  // Don't retry encoding
+                timeout: 60000,
+                retry: false
             });
 
             showNotification("Student registered successfully", "success");
@@ -314,10 +310,10 @@ document.addEventListener("DOMContentLoaded", () => {
             setCaptureCount();
             stopCamera();
         } catch (error) {
-            // Show extended notification for detailed error messages (e.g., face detection failures)
+
             showExtendedNotification(error.message, "error");
-            
-            // Log the error for debugging
+
+
             console.error("Registration error:", error);
         } finally {
             submitBtn.textContent = "Register Student";

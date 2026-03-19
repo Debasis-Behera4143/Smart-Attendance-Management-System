@@ -4,7 +4,7 @@ let sessionStopTimer = null;
 let isBusy = false;
 let lastGrayFrame = null;
 let lastManualScanTime = 0;
-const MANUAL_SCAN_COOLDOWN_MS = 3000; // 3 seconds cooldown between manual scans
+const MANUAL_SCAN_COOLDOWN_MS = 3000;
 
 document.addEventListener("DOMContentLoaded", () => {
     const root = document.getElementById("entryRoot");
@@ -75,52 +75,52 @@ document.addEventListener("DOMContentLoaded", () => {
         const policy = cameraPolicy.value;
         const mode = getSelectedMode();
 
-        // If "Always On" is selected, disable "Run Once" mode
+
         if (policy === "always_on") {
             Array.from(cameraRunMode.options).forEach(option => {
                 if (option.value === "once") {
                     option.disabled = true;
                 }
             });
-            // If current mode is "once", switch to "session"
+
             if (mode === "once") {
                 cameraRunMode.value = "session";
             }
         } else {
-            // Re-enable all run mode options
+
             Array.from(cameraRunMode.options).forEach(option => {
                 option.disabled = false;
             });
         }
 
-        // If "Run Once" is selected, disable "Always On" policy
+
         if (mode === "once") {
             Array.from(cameraPolicy.options).forEach(option => {
                 if (option.value === "always_on") {
                     option.disabled = true;
                 }
             });
-            // If current policy is "always_on", switch to "on_demand"
+
             if (policy === "always_on") {
                 cameraPolicy.value = "on_demand";
             }
         } else {
-            // Re-enable all policy options
+
             Array.from(cameraPolicy.options).forEach(option => {
                 option.disabled = false;
             });
         }
 
-        // Enable/disable features based on run mode
-        // Session Duration: only for "session" mode
+
+
         sessionDuration.disabled = (mode !== "session");
         sessionDuration.parentElement.style.opacity = (mode === "session") ? "1" : "0.5";
 
-        // Interval Check: only for "interval" mode
+
         runInterval.disabled = (mode !== "interval");
         runInterval.parentElement.style.opacity = (mode === "interval") ? "1" : "0.5";
 
-        // Fair Motion Threshold: only for "interval" mode
+
         motionThreshold.disabled = (mode !== "interval");
         motionThreshold.parentElement.style.opacity = (mode === "interval") ? "1" : "0.5";
     };
@@ -270,7 +270,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        // Rate limiting for manual scans (not auto-monitoring)
+
         if (!isAutoScan) {
             const now = Date.now();
             const timeSinceLastScan = now - lastManualScanTime;
@@ -332,7 +332,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         stopMonitoring();
         const intervalMs = getIntervalMsForMode();
-        // Pass true to indicate auto-scan (apply motion check)
+
         monitorTimer = setInterval(() => scanOnce(true), intervalMs);
 
         if (mode === "session") {
@@ -424,7 +424,7 @@ document.addEventListener("DOMContentLoaded", () => {
     motionThreshold.addEventListener("change", onSettingsChanged);
     minimumDuration.addEventListener("change", onSettingsChanged);
 
-    // Manual attendance handling
+
     const manualStudentSelect = document.getElementById("manualStudentSelect");
     const manualEntryBtn = document.getElementById("manualEntryBtn");
 
@@ -432,7 +432,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const data = await apiRequest("/api/students");
             const students = data.students || [];
-            
+
             manualStudentSelect.innerHTML = '<option value="">-- Select Student --</option>';
             students.forEach(student => {
                 const option = document.createElement("option");

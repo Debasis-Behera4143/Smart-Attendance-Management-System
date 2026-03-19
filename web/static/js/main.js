@@ -15,10 +15,10 @@
 
 async function apiRequest(url, options = {}) {
     const apiKey = window.localStorage.getItem("SMART_ATTENDANCE_API_KEY") || "";
-    
-    // Default timeout of 120 seconds for image processing endpoints
+
+
     const timeout = options.timeout || 120000;
-    
+
     const config = {
         headers: {
             "Content-Type": "application/json",
@@ -28,21 +28,21 @@ async function apiRequest(url, options = {}) {
         ...options,
     };
 
-    // Create abort controller for timeout
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     config.signal = controller.signal;
-    
-    // Retry logic for transient failures
+
+
     let lastError = null;
-    const maxRetries = options.retry !== false ? 1 : 0; // Default 1 retry for non-upload requests
-    const shouldRetry = options.method !== 'POST' || url.includes('/api/health'); // Don't retry POSTs except health
-    
+    const maxRetries = options.retry !== false ? 1 : 0;
+    const shouldRetry = options.method !== 'POST' || url.includes('/api/health');
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             const response = await fetch(url, config);
             clearTimeout(timeoutId);
-            
+
             let payload = {};
             try {
                 const text = await response.text();
@@ -59,34 +59,34 @@ async function apiRequest(url, options = {}) {
             return payload;
         } catch (error) {
             lastError = error;
-            
-            // Don't retry on abort or if this was the last attempt
+
+
             if (error.name === 'AbortError' || attempt >= maxRetries || !shouldRetry) {
                 break;
             }
-            
-            // Only retry on network errors
+
+
             if (error.message.includes('fetch') || error.message.includes('Network')) {
                 console.log(`Request failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying...`);
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 continue;
             }
-            
-            // Don't retry other errors
+
+
             break;
         }
     }
-    
-    // Handle the final error
+
+
     clearTimeout(timeoutId);
     if (lastError.name === 'AbortError') {
         throw new Error('Request timeout - processing took too long. Please try again.');
     }
-    // Handle network errors
+
     if (lastError.message === 'Failed to fetch' || lastError.message.includes('NetworkError')) {
         throw new Error('Network error - please check your connection and server status.');
     }
-    // Handle TypeError from network issues
+
     if (lastError instanceof TypeError && !lastError.message) {
         throw new Error('Connection failed - please verify the server is running.');
     }
