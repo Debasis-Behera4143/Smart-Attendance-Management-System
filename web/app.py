@@ -340,6 +340,12 @@ def _before_request():
 
 @app.after_request
 def _after_request(response):
+    # Add CORS headers for all requests
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key, X-Request-ID"
+    response.headers["Access-Control-Max-Age"] = "3600"
+    
     response.headers["X-Request-ID"] = g.get("request_id", "")
     if request.path.startswith("/api/"):
         elapsed_ms = int((time.perf_counter() - g.get("started_at", time.perf_counter())) * 1000)
@@ -372,7 +378,12 @@ def _handle_unexpected_error(exc):
     # Handle HTTP exceptions (404, 500, etc.) properly
     if isinstance(exc, HTTPException):
         if request.path.startswith("/api/"):
-            return _json_error(exc.description or "error", exc.code or 500)
+            response = jsonify({
+                "success": False,
+                "message": exc.description or "error",
+                "request_id": g.get("request_id")
+            })
+            return response, exc.code or 500
         return exc
     
     # For non-HTTP exceptions
@@ -496,6 +507,14 @@ def api_settings():
     return jsonify({"success": True, "settings": settings, "runtime": recognizer.get_runtime_info()})
 
 
+# Handle CORS preflight requests
+@app.route('/api/<path:path>', methods=['OPTIONS'])
+def handle_cors_preflight(path):
+    """Handle CORS preflight OPTIONS requests"""
+    response = jsonify({"success": True})
+    return response
+
+
 @app.route("/api/health")
 def api_health():
     return jsonify(
@@ -596,45 +615,77 @@ def save_face_images():
         
         # Process images in parallel with timeout protection
         max_workers = min(4, len(images))  # Limit concurrent workers
-        timeout_per_batch = 60  # 60 seconds total timeout for better reliability
+        timeout_per_batch = 75  # 75 seconds total timeout (well under frontend 90s timeout)
+        
+        executor = None
+        futures_dict = {}
         
         try:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit all tasks
-                futures = {
-                    executor.submit(process_single_image, (i, img)): i 
-                    for i, img in enumerate(images, start=1)
-                }
-                
-                # Collect results with timeout
-                results = []
-                start_time = time.time()
-                for future in futures:
-                    remaining_time = timeout_per_batch - (time.time() - start_time)
-                    if remaining_time <= 0:
-                        logger.warning(f"Image processing timeout for student_id={student_id}")
-                        break
-                        
-                    try:
-                        result = future.result(timeout=remaining_time)
-                        results.append(result)
-                    except FuturesTimeoutError:
-                        logger.warning(f"Image processing timeout for student_id={student_id}")
-                        break
-                    except Exception as e:
-                        logger.warning(f"Image processing error: {e}")
-                        results.append(("invalid", None, futures[future]))
-                        
+            executor = ThreadPoolExecutor(max_workers=max_workers)
+            
+            # Submit all tasks
+            futures_dict = {
+                executor.submit(process_single_image, (i, img)): i 
+                for i, img in enumerate(images, start=1)
+            }
+            
+            # Collect results with timeout
+            results = []
+            start_time = time.time()
+            completed_count = 0
+            
+            for future in futures_dict:
+                remaining_time = timeout_per_batch - (time.time() - start_time)
+                if remaining_time <= 0:
+                    logger.warning(f"Image processing timeout after {completed_count}/{len(images)} images for student_id={student_id}")
+                    # Cancel pending futures
+                    for f in futures_dict:
+                        if not f.done():
+                            f.cancel()
+                    break
+                    
+                try:
+                    result = future.result(timeout=max(1.0, remaining_time))
+                    results.append(result)
+                    completed_count += 1
+                except FuturesTimeoutError:
+                    logger.warning(f"Single image timeout after {time.time() - start_time:.1f}s for student_id={student_id}")
+                    # Cancel this and remaining futures
+                    for f in futures_dict:
+                        if not f.done():
+                            f.cancel()
+                    break
+                except Exception as e:
+                    logger.warning(f"Image processing error for image {futures_dict[future]}: {e}")
+                    results.append(("invalid", None, futures_dict[future]))
+                    completed_count += 1
+            
+            # If we have some results, continue despite partial timeout
+            if not results and len(images) > 0:
+                logger.error(f"No images processed successfully for student_id={student_id}")
+                raise ValidationError("image processing failed - no images could be processed")
+                    
+        except ValidationError:
+            raise
         except Exception as e:
-            logger.error(f"Parallel processing failed for student_id={student_id}: {e}")
-            raise ValidationError("image processing failed - please try again with fewer images")
+            logger.exception(f"Parallel processing failed for student_id={student_id}")
+            raise ValidationError(f"image processing failed: {str(e)}")
+        finally:
+            # Always cleanup executor
+            if executor:
+                try:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                except Exception as e:
+                    logger.error(f"Error shutting down executor: {e}")
         
-        # Save successfully processed images
+        # Save successfully processed images and clear from memory
         for status, image, index in results:
             if status == "success":
                 try:
                     image.save(os.path.join(folder_path, f"img{saved_count + 1}.jpg"), "JPEG", quality=85)
                     saved_count += 1
+                    # Clear image from memory immediately after saving
+                    del image
                 except Exception as e:
                     logger.error(f"Failed to save image {index}: {e}")
                     invalid_count += 1
@@ -642,6 +693,9 @@ def save_face_images():
                 no_face_count += 1
             elif status == "invalid":
                 invalid_count += 1
+        
+        # Clear results from memory
+        del results
 
         # Require at least 5 images with faces for reliable encoding
         # Reduced from previous higher requirements for better user experience
@@ -688,11 +742,43 @@ def save_face_images():
         })
         
     except ValidationError as e:
+        # Cleanup: Delete any partial images if validation fails
+        try:
+            folder_path = _safe_dataset_folder(student_id)
+            if os.path.exists(folder_path):
+                for file in os.listdir(folder_path):
+                    try:
+                        os.remove(os.path.join(folder_path, file))
+                    except Exception:
+                        pass
+                try:
+                    os.rmdir(folder_path)
+                except Exception:
+                    pass
+        except Exception as cleanup_error:
+            logger.error(f"Failed to cleanup folder after validation error: {cleanup_error}")
+        
         logger.warning(f"Validation error in save_face_images: {e}")
-        raise
+        return _json_error(str(e), 400)
     except Exception as e:
-        logger.exception(f"Unexpected error in save_face_images")
-        return _json_error(f"image processing failed: {str(e)}", 500)
+        # Cleanup: Delete any partial images if unexpected error occurs
+        try:
+            folder_path = _safe_dataset_folder(student_id)
+            if os.path.exists(folder_path):
+                for file in os.listdir(folder_path):
+                    try:
+                        os.remove(os.path.join(folder_path, file))
+                    except Exception:
+                        pass
+                try:
+                    os.rmdir(folder_path)
+                except Exception:
+                    pass
+        except Exception as cleanup_error:
+            logger.error(f"Failed to cleanup folder after unexpected error: {cleanup_error}")
+        
+        logger.exception(f"Unexpected error in save_face_images for {student_id}")
+        return _json_error(f"server error during image processing: {str(e)}", 500)
 
 
 @app.route("/api/encode-student/<student_id>", methods=["POST"])
@@ -1186,7 +1272,7 @@ def download_report():
 @app.route("/admin")
 def admin_page():
     """Admin dashboard for managing students."""
-    return render_template("admin.html")
+    return render_template("admin.html", subjects=config.SUBJECT_OPTIONS)
 
 
 @app.route("/api/admin/students")
@@ -1196,23 +1282,26 @@ def api_admin_students():
     result = []
     for student in students:
         student_id = student[0]
-        # Get attendance stats for each student
         summary = db.get_student_subject_summary(student_id)
         total_classes = sum(s["total_classes"] for s in summary)
         present_classes = sum(s["present_classes"] for s in summary)
         overall_rate = round((present_classes / total_classes) * 100, 2) if total_classes else 0.0
-        
-        # Include subject-wise breakdown for filtering
-        subject_breakdown = []
-        for subj_data in summary:
-            rate = round((subj_data["present_classes"] / subj_data["total_classes"]) * 100, 2) if subj_data["total_classes"] else 0.0
-            subject_breakdown.append({
+
+        subject_breakdown = [
+            {
                 "subject": subj_data["subject"],
                 "total_classes": subj_data["total_classes"],
                 "present_classes": subj_data["present_classes"],
-                "attendance_rate": rate
-            })
-        
+                "attendance_rate": round(
+                    (subj_data["present_classes"] / subj_data["total_classes"]) * 100,
+                    2,
+                )
+                if subj_data["total_classes"]
+                else 0.0,
+            }
+            for subj_data in summary
+        ]
+
         result.append({
             "student_id": student[0],
             "name": student[1],
@@ -1220,9 +1309,9 @@ def api_admin_students():
             "registered_date": student[3],
             "total_classes": total_classes,
             "attendance_rate": overall_rate,
-            "subject_breakdown": subject_breakdown  # Add this for filtering
+            "subject_breakdown": subject_breakdown,
         })
-    
+
     return jsonify({"success": True, "students": result})
 
 

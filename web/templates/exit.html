@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Exit Camera | Smart Attendance{% endblock %}
 
@@ -94,13 +94,13 @@
                     </label>
                     <p class="meta-note">
                         {% if settings.yolo_supported %}
-                            YOLO Status: <strong style="color: var(--success);">Available</strong>
+                            YOLO Status: <strong>Available</strong>
                         {% else %}
-                            YOLO Status: <strong style="color: var(--warning);">Not Available</strong>
+                            YOLO Status: <strong>Not Available</strong>
                         {% endif %}
                     </p>
-                    <p class="meta-note">Minimum duration determines PRESENT/ABSENT status. If time spent is below minimum, student is marked ABSENT.</p>
-                    <p class="meta-note">Run Once = single click, Session = continuous monitoring until timer ends, Timed Fair Check = periodic recognition with movement check.</p>
+                    <p class="meta-note">Minimum duration determines PRESENT or ABSENT status.</p>
+                    <p class="meta-note">Run Once records a single scan, Session monitors until the timer ends, and Timed Fair Check scans periodically with motion checks.</p>
                 </div>
             </section>
 
@@ -115,11 +115,11 @@
 
             <section class="card">
                 <div class="card-head">
-                    <h2>📝 Manual Exit</h2>
+                    <h2>Manual Exit</h2>
                 </div>
                 <div class="card-body">
                     <p class="meta-note" style="margin-bottom: 12px;">
-                        <strong>Fallback Option:</strong> Use this if camera/recognition fails.
+                        <strong>Fallback option:</strong> Use this if recognition fails.
                     </p>
                     <label class="field">
                         <span>Select Student</span>
@@ -130,8 +130,8 @@
                     <button id="manualExitBtn" class="btn btn-primary" style="width: 100%;" disabled>
                         Mark Exit Manually
                     </button>
-                    <p class="meta-note" style="margin-top: 8px; font-size: 0.85em; color: var(--info);">
-                        This will mark the selected student as exited and record attendance.
+                    <p class="meta-note" style="margin-top: 8px;">
+                        This marks the selected student as exited and records attendance.
                     </p>
                 </div>
             </section>

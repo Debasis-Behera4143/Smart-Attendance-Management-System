@@ -1,0 +1,172 @@
+.admin-container {
+    display: grid;
+    gap: 1rem;
+}
+
+.admin-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.8rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid #f0c4c4;
+    border-radius: 14px;
+    background: #fff5f5;
+    color: #8e2f2f;
+}
+
+.admin-warning svg {
+    flex-shrink: 0;
+}
+
+.admin-subject-filter {
+    margin-bottom: 0.8rem;
+}
+
+.admin-stats .stat-card {
+    text-align: center;
+}
+
+.admin-stats .stat-card h3 {
+    margin: 0.4rem 0 0;
+}
+
+.admin-stats .stat-card p {
+    margin: 0;
+    font-weight: 700;
+}
+
+.admin-search {
+    margin-bottom: 1rem;
+}
+
+.students-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.students-table th,
+.students-table td {
+    padding: 0.95rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #e8edf2;
+}
+
+.students-table th {
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.students-table tbody tr:hover {
+    background: #f8fbfd;
+}
+
+.delete-btn,
+.btn-danger {
+    min-height: 42px;
+    padding: 0.68rem 1rem;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: var(--danger);
+    color: #ffffff;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.delete-btn:hover,
+.btn-danger:hover {
+    background: #a93232;
+}
+
+.attendance-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.28rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.attendance-excellent {
+    color: #145c3b;
+    background: #dff3e8;
+}
+
+.attendance-good {
+    color: #16508a;
+    background: #e3eefc;
+}
+
+.attendance-average {
+    color: #8a5b14;
+    background: #fff0d6;
+}
+
+.attendance-poor {
+    color: #8e2f2f;
+    background: #fde8e8;
+}
+
+.no-students,
+.loading {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--muted);
+}
+
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(23, 33, 43, 0.45);
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    width: min(520px, 100%);
+    padding: 1.5rem;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 16px 40px rgba(23, 33, 43, 0.18);
+}
+
+.modal-header h3 {
+    color: var(--brand-dark);
+}
+
+.modal-body {
+    margin-top: 0.8rem;
+    color: var(--muted);
+}
+
+.modal-warning-text {
+    margin-top: 1rem;
+    color: var(--danger);
+    font-weight: 800;
+}
+
+.modal-list {
+    margin: 0.6rem 0 0;
+    padding-left: 1.15rem;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.7rem;
+    margin-top: 1.2rem;
+}
+
+@media (max-width: 640px) {
+    .modal-actions {
+        flex-direction: column;
+    }
+}

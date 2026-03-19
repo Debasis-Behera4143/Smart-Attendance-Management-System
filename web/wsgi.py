@@ -31,4 +31,19 @@ logger.info("Startup cleanup complete")
 if __name__ == "__main__":
     # For local development with waitress
     from waitress import serve
-    serve(app, host=config.FLASK_HOST, port=config.FLASK_PORT)
+    
+    # Increased timeouts for long-running image processing operations
+    serve(
+        app, 
+        host=config.FLASK_HOST, 
+        port=config.FLASK_PORT,
+        channel_timeout=180,  # 3 minutes for channel timeout
+        asyncore_loop_timeout=1,  # Poll interval
+        outbuf_overflow=1048576,  # 1MB outbound buffer
+        inbuf_overflow=524288,  # 512KB inbound buffer
+        connection_limit=100,  # Max simultaneous connections
+        cleanup_interval=10,  # Cleanup idle connections every 10s
+        recv_bytes=8192,  # Receive buffer size
+        send_bytes=8192,  # Send buffer size
+        threads=4  # Worker threads
+    )

@@ -258,7 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
             // Step 1: Validate images FIRST (before registering in database)
-            submitBtn.textContent = "Validating images... (may take up to 60s)";
+            submitBtn.textContent = "Validating images... (may take up to 90s)";
             
             const saveResult = await apiRequest("/api/save-face-images", {
                 method: "POST",
@@ -266,7 +266,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     student_id: studentId,
                     images: capturedImages,
                 }),
-                timeout: 90000, // 90 second timeout for image validation
+                timeout: 120000, // 120 second timeout for image validation (backend has 75s limit)
+                retry: false  // Don't retry POST requests to avoid duplicates
             });
 
             // Show detailed validation results if available
@@ -292,6 +293,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     roll_number: rollNumber,
                 }),
                 timeout: 15000, // 15 second timeout
+                retry: false  // Don't retry to avoid duplicate registrations
             });
 
             // Step 3: Generate face encodings
@@ -301,6 +303,7 @@ document.addEventListener("DOMContentLoaded", () => {
             await apiRequest(`/api/encode-student/${studentId}`, { 
                 method: "POST",
                 timeout: 60000, // 60 second timeout for encoding
+                retry: false  // Don't retry encoding
             });
 
             showNotification("Student registered successfully", "success");

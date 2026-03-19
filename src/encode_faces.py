@@ -6,9 +6,12 @@ Converts face images into numerical embeddings for recognition
 import face_recognition
 import pickle
 import os
+import logging
 from pathlib import Path
 import cv2
 from . import config
+
+logger = logging.getLogger(__name__)
 
 
 class FaceEncoder:
@@ -145,7 +148,7 @@ class FaceEncoder:
         return [], []
     
     def save_encodings(self):
-        """Save encodings to pickle file"""
+        """Save encodings to pickle file with atomic write"""
         print("\n" + "="*60)
         print("SAVING ENCODINGS")
         print("="*60)
@@ -156,8 +159,24 @@ class FaceEncoder:
         }
         
         try:
-            with open(self.encodings_file, 'wb') as f:
-                pickle.dump(data, f)
+            # Write to temporary file first (atomic write)
+            temp_file = self.encodings_file + ".tmp"
+            with open(temp_file, 'wb') as f:
+                pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            # If write successful, replace old file
+            if os.path.exists(self.encodings_file):
+                # Backup old file first
+                backup_file = self.encodings_file + ".bak"
+                try:
+                    if os.path.exists(backup_file):
+                        os.remove(backup_file)
+                    os.rename(self.encodings_file, backup_file)
+                except Exception as e:
+                    logger.warning(f"Could not create backup: {e}")
+            
+            # Move temp file to final location
+            os.replace(temp_file, self.encodings_file)
             
             print(f"✓ Encodings saved successfully!")
             print(f"  File: {self.encodings_file}")
@@ -167,6 +186,13 @@ class FaceEncoder:
             
         except Exception as e:
             print(f"✗ Error saving encodings: {e}")
+            # Try to cleanup temp file
+            try:
+                temp_file = self.encodings_file + ".tmp"
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except Exception:
+                pass
             return False
     
     def encode_single_student(self, student_id):
@@ -183,95 +209,119 @@ class FaceEncoder:
         print(f"ENCODING NEW STUDENT: {student_id}")
         print("="*60)
         
-        # Load existing encodings
-        existing_encodings, existing_names = self.load_existing_encodings()
-        
-        # If student already has encodings, remove them first (for re-registration)
-        if student_id in existing_names:
-            print(f"⚠️  Student {student_id} already has encodings - removing old encodings...")
-            # Filter out old encodings for this student
-            filtered_encodings = []
-            filtered_names = []
-            removed_count = 0
+        try:
+            # Load existing encodings
+            existing_encodings, existing_names = self.load_existing_encodings()
             
-            for encoding, name in zip(existing_encodings, existing_names):
-                if name == student_id:
-                    removed_count += 1
-                else:
-                    filtered_encodings.append(encoding)
-                    filtered_names.append(name)
-            
-            existing_encodings = filtered_encodings
-            existing_names = filtered_names
-            print(f"  Removed {removed_count} old encodings for {student_id}")
-        
-        student_folder = os.path.join(self.dataset_path, student_id)
-        
-        if not os.path.exists(student_folder):
-            print(f"✗ Student folder not found: {student_folder}")
-            return False, 0
-        
-        # Get all images for this student
-        image_files = [f for f in os.listdir(student_folder) 
-                      if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-        
-        if not image_files:
-            print(f"✗ No images found for student {student_id}")
-            return False, 0
-        
-        print(f"Found {len(image_files)} images for {student_id}")
-        print("-"*60)
-        
-        encoded_count = 0
-        
-        for img_file in image_files:
-            try:
-                img_path = os.path.join(student_folder, img_file)
-                image = face_recognition.load_image_file(img_path)
+            # If student already has encodings, remove them first (for re-registration)
+            if student_id in existing_names:
+                print(f"⚠️  Student {student_id} already has encodings - removing old encodings...")
+                # Filter out old encodings for this student
+                filtered_encodings = []
+                filtered_names = []
+                removed_count = 0
                 
-                # Use HOG with 1x upsample matching validation
-                face_locations = face_recognition.face_locations(
-                    image, 
-                    model="hog",
-                    number_of_times_to_upsample=1  # Consistent with validation
-                )
-                
-                encodings = face_recognition.face_encodings(
-                    image, 
-                    face_locations,
-                    model=self.encoding_model
-                )
-                
-                if len(encodings) > 0:
-                    # Use largest face if multiple detected
-                    if len(encodings) > 1:
-                        areas = [(bottom - top) * (right - left) 
-                                for top, right, bottom, left in face_locations]
-                        largest_idx = areas.index(max(areas))
-                        existing_encodings.append(encodings[largest_idx])
+                for encoding, name in zip(existing_encodings, existing_names):
+                    if name == student_id:
+                        removed_count += 1
                     else:
-                        existing_encodings.append(encodings[0])
-                    
-                    existing_names.append(student_id)
-                    encoded_count += 1
-                    print(f"  ✓ Encoded: {img_file}")
-                else:
-                    print(f"  ✗ No face in: {img_file}")
-                    
+                        filtered_encodings.append(encoding)
+                        filtered_names.append(name)
+                
+                existing_encodings = filtered_encodings
+                existing_names = filtered_names
+                print(f"  Removed {removed_count} old encodings for {student_id}")
+            
+            student_folder = os.path.join(self.dataset_path, student_id)
+            
+            if not os.path.exists(student_folder):
+                print(f"✗ Student folder not found: {student_folder}")
+                logger.error(f"Student folder not found: {student_folder}")
+                return False, 0
+            
+            # Get all images for this student
+            try:
+                image_files = [f for f in os.listdir(student_folder) 
+                              if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
             except Exception as e:
-                print(f"  ✗ Error processing {img_file}: {e}")
-        
-        print("-"*60)
-        print(f"Encoded {encoded_count}/{len(image_files)} images for {student_id}")
-        
-        if encoded_count > 0:
-            # Save updated encodings
-            self.known_encodings = existing_encodings
-            self.known_names = existing_names
-            success = self.save_encodings()
-            return success, encoded_count
-        
-        return False, 0
+                print(f"✗ Error reading student folder: {e}")
+                logger.error(f"Error reading student folder {student_folder}: {e}")
+                return False, 0
+            
+            if not image_files:
+                print(f"✗ No images found for student {student_id}")
+                logger.warning(f"No images found for student {student_id}")
+                return False, 0
+            
+            print(f"Found {len(image_files)} images for {student_id}")
+            print("-"*60)
+            
+            encoded_count = 0
+            
+            for img_file in image_files:
+                try:
+                    img_path = os.path.join(student_folder, img_file)
+                    
+                    # Check if file exists and is readable
+                    if not os.path.isfile(img_path):
+                        print(f"  ✗ Not a file: {img_file}")
+                        continue
+                    
+                    image = face_recognition.load_image_file(img_path)
+                    
+                    # Use HOG with 1x upsample matching validation
+                    face_locations = face_recognition.face_locations(
+                        image, 
+                        model="hog",
+                        number_of_times_to_upsample=1  # Consistent with validation
+                    )
+                    
+                    encodings = face_recognition.face_encodings(
+                        image, 
+                        face_locations,
+                        model=self.encoding_model
+                    )
+                    
+                    if len(encodings) > 0:
+                        # Use largest face if multiple detected
+                        if len(encodings) > 1:
+                            areas = [(bottom - top) * (right - left) 
+                                    for top, right, bottom, left in face_locations]
+                            largest_idx = areas.index(max(areas))
+                            existing_encodings.append(encodings[largest_idx])
+                        else:
+                            existing_encodings.append(encodings[0])
+                        
+                        existing_names.append(student_id)
+                        encoded_count += 1
+                        print(f"  ✓ Encoded: {img_file}")
+                    else:
+                        print(f"  ✗ No face in: {img_file}")
+                        
+                except IOError as e:
+                    print(f"  ✗ File I/O error {img_file}: {e}")
+                    logger.error(f"File I/O error for {img_path}: {e}")
+                except Exception as e:
+                    print(f"  ✗ Error processing {img_file}: {e}")
+                    logger.error(f"Error processing {img_path}: {e}")
+            
+            print("-"*60)
+            print(f"Encoded {encoded_count}/{len(image_files)} images for {student_id}")
+            
+            if encoded_count > 0:
+                # Save updated encodings
+                self.known_encodings = existing_encodings
+                self.known_names = existing_names
+                success = self.save_encodings()
+                return success, encoded_count
+            else:
+                logger.warning(f"No faces encoded for student {student_id}")
+                return False, 0
+            
+        except Exception as e:
+            print(f"✗ Unexpected error encoding student {student_id}: {e}")
+            logger.exception(f"Unexpected error encoding student {student_id}")
+            return False, 0
     
     def remove_student_encodings(self, student_id):
         """Remove encodings for a deleted student without re-encoding others.

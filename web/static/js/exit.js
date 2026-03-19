@@ -259,8 +259,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 <dt>Student</dt><dd>${data.student_name}</dd>
                 <dt>ID</dt><dd>${data.student_id}</dd>
                 <dt>Confidence</dt><dd>${data.confidence}%</dd>
-                <dt>Entry Time</dt><dd>${formatDateTime(data.exit_time)}</dd>
-                <dt>Subject</dt><dd>${activeSubject.value}</dd>
+                <dt>Entry Time</dt><dd>${formatDateTime(data.entry_time)}</dd>
+                <dt>Exit Time</dt><dd>${formatDateTime(data.exit_time)}</dd>
+                <dt>Duration</dt><dd>${formatDuration(data.duration_minutes)}</dd>
+                <dt>Status</dt><dd>${data.attendance_status}</dd>
+                <dt>Subject</dt><dd>${data.subject || activeSubject.value}</dd>
             </dl>
         `;
     };

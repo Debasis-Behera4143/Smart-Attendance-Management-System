@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Dashboard | Smart Attendance{% endblock %}
 
@@ -13,22 +13,22 @@
         <article class="stat-card">
             <span>Total Students</span>
             <strong>{{ stats.total }}</strong>
-            <p style="font-size: 0.85rem; color: var(--muted); margin-top: 0.3rem;">Enrolled</p>
+            <p>Enrolled students</p>
         </article>
         <article class="stat-card success">
             <span>Present Today</span>
             <strong>{{ stats.present }}</strong>
-            <p style="font-size: 0.85rem; color: var(--success); margin-top: 0.3rem;">Active</p>
+            <p>Active attendance records</p>
         </article>
         <article class="stat-card danger">
             <span>Absent Today</span>
             <strong>{{ stats.absent }}</strong>
-            <p style="font-size: 0.85rem; color: var(--danger); margin-top: 0.3rem;">Missing</p>
+            <p>Pending or missing attendance</p>
         </article>
         <article class="stat-card warning">
             <span>Attendance Rate</span>
             <strong>{{ stats.attendance_rate }}%</strong>
-            <p style="font-size: 0.85rem; color: var(--warning); margin-top: 0.3rem;">Success Rate</p>
+            <p>Overall performance for today</p>
         </article>
     </div>
 
@@ -43,7 +43,7 @@
     <section class="card">
         <div class="card-head">
             <h2>Today's Attendance Records</h2>
-            <span style="font-size: 0.85rem; color: var(--muted); font-weight: 600;">
+            <span style="font-size: 0.85rem; color: var(--muted); font-weight: 700;">
                 {{ records|length if records else 0 }} record{{ 's' if records and records|length != 1 else '' }}
             </span>
         </div>
@@ -81,10 +81,7 @@
             </table>
             {% else %}
             <div class="empty-state">
-                <p style="text-align: center; padding: 2rem; color: var(--muted);">
-                    No attendance records available for today.<br>
-                    <small>Records will appear once students check in through the Entry gate.</small>
-                </p>
+                No attendance records available for today. Records will appear after entry scans are completed.
             </div>
             {% endif %}
         </div>

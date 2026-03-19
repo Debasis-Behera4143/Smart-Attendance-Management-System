@@ -743,7 +743,7 @@ for r in results:
 6. ✅ Handle edge cases (poor lighting, glasses, etc.)
 
 **Key Success Metrics**:
-- Recognition accuracy: >90%
+- Recognition accuracy: >75%
 - Processing speed: <500ms per frame
 - False positive rate: <5%
 - Registration success rate: >95%

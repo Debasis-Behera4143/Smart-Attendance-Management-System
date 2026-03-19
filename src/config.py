@@ -92,6 +92,37 @@ CAMERA_RECONNECT_ATTEMPTS = _env_int("SMART_ATTENDANCE_CAMERA_RECONNECT_ATTEMPTS
 CAMERA_RECONNECT_DELAY_SECONDS = _env_int("SMART_ATTENDANCE_CAMERA_RECONNECT_DELAY", 5)
 CAMERA_STREAM_BUFFER_SIZE = _env_int("SMART_ATTENDANCE_CAMERA_BUFFER_SIZE", 1)
 
+# CCTV stream processing settings
+# Generic fallback stream URL (used when entry/exit stream is not set)
+CCTV_STREAM_URL = os.getenv("SMART_ATTENDANCE_CCTV_STREAM_URL", "").strip()
+# Dedicated entry/exit camera streams
+ENTRY_CAMERA_STREAM = os.getenv(
+    "SMART_ATTENDANCE_ENTRY_CAMERA_STREAM",
+    CCTV_STREAM_URL,
+).strip()
+EXIT_CAMERA_STREAM = os.getenv(
+    "SMART_ATTENDANCE_EXIT_CAMERA_STREAM",
+    "",
+).strip()
+# Process every Nth frame to reduce compute load on CCTV streams
+FRAME_PROCESS_INTERVAL = _env_int("SMART_ATTENDANCE_FRAME_PROCESS_INTERVAL", 5)
+# Minimum confidence percentage required to mark attendance
+RECOGNITION_CONFIDENCE_THRESHOLD = _env_float(
+    "SMART_ATTENDANCE_RECOGNITION_CONFIDENCE_THRESHOLD",
+    70.0,
+)
+# Backward-compatible alias if other modules expect CONFIDENCE_THRESHOLD
+CONFIDENCE_THRESHOLD = RECOGNITION_CONFIDENCE_THRESHOLD
+# Duplicate suppression window (seconds)
+DUPLICATE_ATTENDANCE_WINDOW_SECONDS = _env_int(
+    "SMART_ATTENDANCE_DUPLICATE_ATTENDANCE_WINDOW_SECONDS",
+    300,
+)
+# CCTV display and loop tuning
+CCTV_DISPLAY_WIDTH = _env_int("SMART_ATTENDANCE_CCTV_DISPLAY_WIDTH", 640)
+CCTV_LOOP_SLEEP_SECONDS = _env_float("SMART_ATTENDANCE_CCTV_LOOP_SLEEP_SECONDS", 0.02)
+CCTV_SHOW_LIVE_DISPLAY = _env_bool("SMART_ATTENDANCE_CCTV_SHOW_LIVE_DISPLAY", True)
+
 # Recognition settings
 # HOG is faster but less accurate - CNN is more accurate but slower
 # Using CNN for better accuracy to prevent misidentification

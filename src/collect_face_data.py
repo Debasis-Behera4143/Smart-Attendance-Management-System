@@ -1,7 +1,6 @@
 """
-"""
 Face Data Collection Module
-Captures multiple face images per student with variations for better recognition
+Captures multiple face images per student with variations for better recognition.
 """
 
 import cv2

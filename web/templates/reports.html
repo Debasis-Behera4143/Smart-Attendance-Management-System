@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Reports | Smart Attendance{% endblock %}
 
@@ -6,42 +6,32 @@
 <section class="container">
     <div class="page-head">
         <h1>Attendance Reports</h1>
-        <p>Generate comprehensive reports and review historical attendance data.</p>
+        <p>Generate reports and review historical attendance data.</p>
     </div>
 
-    <!-- Quick Subject Filter -->
-    <section class="card" style="margin-bottom: 1.5rem;">
+    <section class="card">
         <div class="card-head">
             <h2>Quick Filter by Subject</h2>
         </div>
         <div class="card-body">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 12px;">
-                <a href="/reports" class="subject-filter-btn {% if not selected_subject %}active{% endif %}" 
-                   style="display: flex; align-items: center; justify-content: center; padding: 12px 16px; 
-                          border: 2px solid #e0e0e0; border-radius: 8px; text-decoration: none; 
-                          color: #2c3e50; font-weight: 600; transition: all 0.3s;
-                          {% if not selected_subject %}background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: #667eea;{% else %}background: white;{% endif %}">
+            <div class="subject-filter-grid">
+                <a href="/reports" class="subject-filter-btn {% if not selected_subject %}active{% endif %}">
                     All Subjects
                 </a>
                 {% for subject in subjects %}
-                <a href="/reports?subject={{ subject }}" 
-                   class="subject-filter-btn {% if selected_subject == subject %}active{% endif %}"
-                   style="display: flex; align-items: center; justify-content: center; padding: 12px 16px; 
-                          border: 2px solid #e0e0e0; border-radius: 8px; text-decoration: none; 
-                          color: #2c3e50; font-weight: 600; transition: all 0.3s;
-                          {% if selected_subject == subject %}background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: #667eea;{% else %}background: white;{% endif %}">
+                <a href="/reports?subject={{ subject }}" class="subject-filter-btn {% if selected_subject == subject %}active{% endif %}">
                     {{ subject }}
                 </a>
                 {% endfor %}
             </div>
             {% if selected_subject %}
-            <p style="margin: 0; padding: 8px 12px; background: #f0f4ff; border-radius: 6px; color: #4c6ef5; font-size: 0.9rem;">
-                📌 Currently showing: <strong>{{ selected_subject }}</strong> 
-                <a href="/reports" style="color: #4c6ef5; text-decoration: underline; margin-left: 8px;">Clear filter</a>
+            <p class="subject-filter-note">
+                Currently showing: <strong>{{ selected_subject }}</strong>
+                <a href="/reports" style="margin-left: 8px;">Clear filter</a>
             </p>
             {% else %}
-            <p style="margin: 0; padding: 8px 12px; background: #f0f4ff; border-radius: 6px; color: #4c6ef5; font-size: 0.9rem;">
-                📌 Showing all subjects. Click a subject above to filter.
+            <p class="subject-filter-note">
+                Showing all subjects. Choose a subject above to filter.
             </p>
             {% endif %}
         </div>
@@ -110,7 +100,7 @@
                             </span>
                         </td>
                         <td>{{ record[6] }}</td>
-                        <td>{{ record[7] if record|length > 7 else 'Operating System' }}</td>
+                        <td>{{ record[7] if record|length > 7 else 'N/A' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
