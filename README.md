@@ -178,7 +178,7 @@ The Smart Attendance System is designed to solve the traditional attendance mark
             │                         │                 │
             ▼                         ▼                 ▼
 ┌──────────────────┐   ┌──────────────────┐   ┌──────────────┐
-│ DatabaseManager  │   │ RecognitionService│  │ FaceEncoder  │
+│ DatabaseManager  │   │RecognitionService│   │ FaceEncoder  │
 │                  │   │                  │   │              │
 │ • Students       │   │ • Face Detection │   │ • Encoding   │
 │ • Entry Log      │   │ • Recognition    │   │ • Storage    │
@@ -189,7 +189,7 @@ The Smart Attendance System is designed to solve the traditional attendance mark
          ▼                      ▼                     ▼
 ┌─────────────────┐   ┌──────────────────┐   ┌──────────────┐
 │  SQLite DB      │   │  face_recognition│   │ Pickle Files │
-│  (WAL Mode)     │   │  library (dlib)   │   │ (Encodings)  │
+│  (WAL Mode)     │   │  library (dlib)  │   │ (Encodings)  │
 └─────────────────┘   └──────────────────┘   └──────────────┘
 ```
 
