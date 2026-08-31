@@ -1,4 +1,4 @@
-# Smart Attendance System
+## 📋Smart Attendance System
 
 **AI-Powered Face Recognition Attendance System**
 
